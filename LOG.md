@@ -34,6 +34,13 @@
 - Ймовірна причина — синхронізація **OneDrive** (репозиторій лежить на Робочому столі, який синхронізується).
 - Висновок: git-репозиторії краще тримати поза OneDrive.
 
+### Публікація на GitHub
+
+- Перший `git push` через HTTPS впав: `remote: Invalid username or token. Password authentication is not supported`.
+  HTTPS-доступ вимагає **Personal Access Token**, а не пароль; у Git Credential Manager були зіпсовані збережені дані.
+- Перевірено SSH: `ssh -T git@github.com` → `Hi VladyslavKozlov2101git! You've successfully authenticated` (ключ уже доданий в акаунт).
+- Рішення: `git remote set-url origin git@github.com:VladyslavKozlov2101git/esp32-log.git` → `git push -u origin main` пройшов.
+
 ### Наступні кроки
 
 - [ ] перенести репозиторій поза OneDrive (або вимкнути синхронізацію для цієї папки)
