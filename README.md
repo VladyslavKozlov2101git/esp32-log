@@ -20,3 +20,4 @@ git commit -m "Сесія N: короткий опис"
 | Проєкт | Шлях |
 | --- | --- |
 | blink (перша прошивка) | `C:\esp32\esp32-blink` |
+| touch-counter (сенсор + вебсторінка) | `C:\esp32\esp32-touch-counter` |
