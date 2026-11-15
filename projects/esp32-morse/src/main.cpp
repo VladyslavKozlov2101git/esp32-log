@@ -3,7 +3,8 @@
 #include <WebServer.h>
 
 // ---------- Налаштування ----------
-static const int TOUCH_PIN = 4;  // TTP223B OUT -> GPIO4
+static const int TOUCH_PIN = 4;     // TTP223B OUT -> GPIO4
+static const int BUZZER_PIN = 18;   // п'єзо-пищалка (необов'язково)
 
 static const char *AP_SSID = "ESP32-Morse";
 static const char *AP_PASS = "12345678";
@@ -48,6 +49,7 @@ static bool hasRelease = false;
 static unsigned long pressStart = 0;
 static unsigned long releaseAt = 0;
 static uint32_t symbolCount = 0;
+static uint32_t symbolSeq = 0;  // для синхронізації звуку в браузері
 
 WebServer server(80);
 
@@ -100,6 +102,7 @@ static const char PAGE[] PROGMEM = R"rawliteral(
     <div class="buffer" id="buffer"></div>
     <div class="row"><span class="dot" id="dot"></span><span id="status">з'єднання…</span></div>
     <button id="clear">Очистити</button>
+    <button id="sound">Звук у браузері: увімкнено</button>
     <p class="hint">
       Короткий дотик — <b>крапка</b>, довший (&gt; 0.3 с) — <b>тире</b>.<br>
       Пауза 0.7 с завершує літеру, 2 с — додає пробіл.
@@ -113,6 +116,33 @@ const bufEl = document.getElementById('buffer');
 const dot = document.getElementById('dot');
 const statusEl = document.getElementById('status');
 let fails = 0, lastText = null, lastBuf = null;
+let actx = null, muted = false, lastSeq = -1;
+
+function ensureAudio() {
+  if (!actx) {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (Ctx) actx = new Ctx();
+  }
+  if (actx && actx.state === 'suspended') actx.resume();
+  return actx;
+}
+
+function beep(ms, freq) {
+  if (muted) return;
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = freq || 760;
+  const t = ctx.currentTime;
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.18, t + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + ms / 1000);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + ms / 1000 + 0.02);
+}
 
 function esc(s) {
   return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -128,6 +158,10 @@ async function poll() {
       if (d.text) textEl.scrollTop = textEl.scrollHeight;
     }
     if (d.buffer !== lastBuf) { lastBuf = d.buffer; bufEl.textContent = d.buffer; }
+    if (typeof d.seq === 'number' && d.seq !== lastSeq) {
+      if (lastSeq >= 0) beep(d.symbol === '-' ? 190 : 70, d.symbol === '-' ? 620 : 800);
+      lastSeq = d.seq;
+    }
     fails = 0;
     dot.className = 'dot online' + (d.touch ? ' touch' : '');
     statusEl.textContent = d.touch ? 'дотик — тримайте для тире' : 'готово';
@@ -140,6 +174,15 @@ document.getElementById('clear').onclick = async () => {
   try { await fetch('/api/clear', { cache:'no-store' }); } catch(e) {}
   lastText = null; lastBuf = null; poll();
 };
+
+const soundBtn = document.getElementById('sound');
+soundBtn.onclick = () => {
+  muted = !muted;
+  soundBtn.textContent = 'Звук у браузері: ' + (muted ? 'вимкнено' : 'увімкнено');
+  if (!muted) { ensureAudio(); beep(80, 900); }
+};
+
+document.addEventListener('pointerdown', () => { if (!muted) ensureAudio(); }, { passive: true });
 
 const KEYBOARD = [['A','.-'],['B','-...'],['C','-.-.'],['D','-..'],['E','.'],['F','..-.'],
   ['G','--.'],['H','....'],['I','..'],['J','.---'],['K','-.-'],['L','.-..'],['M','--'],
@@ -170,7 +213,11 @@ void handleState() {
   json += buffer;
   json += "\",\"touch\":";
   json += pressed ? "true" : "false";
-  json += "}";
+  json += ",\"seq\":";
+  json += symbolSeq;
+  json += ",\"symbol\":\"";
+  json += lastSymbol;
+  json += "\"}";
   server.sendHeader("Cache-Control", "no-store");
   server.send(200, "application/json", json);
 }
@@ -192,6 +239,7 @@ void setup() {
   Serial.println("=== ESP32 morse key ===");
 
   pinMode(TOUCH_PIN, INPUT);
+  ledcAttach(BUZZER_PIN, 700, 10);  // канал тону, стартує вимкненим
 
   bool ok = WiFi.softAP(AP_SSID, AP_PASS);
   Serial.printf("AP '%s' %s, IP: %s\n", AP_SSID, ok ? "started" : "FAILED",
@@ -215,15 +263,18 @@ void loop() {
   if (raw && !pressed) {
     pressed = true;
     pressStart = now;
+    ledcWriteTone(BUZZER_PIN, 700);  // живий сайдтон, поки тримають
   }
 
   // Кінець дотику — визначаємо крапку/тире
   if (!raw && pressed) {
     pressed = false;
+    ledcWrite(BUZZER_PIN, 0);
     unsigned long held = now - pressStart;
     lastSymbol = (held < DOT_MAX_MS) ? "." : "-";
     buffer += lastSymbol;
     symbolCount++;
+    symbolSeq++;
     releaseAt = now;
     hasRelease = true;
     Serial.printf("held %lu ms -> %s   [%s]\n", held, lastSymbol.c_str(), buffer.c_str());
