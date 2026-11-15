@@ -14,6 +14,7 @@
 | --- | --- | --- |
 | [`projects/esp32-blink`](projects/esp32-blink) | блимає LED, пише в Serial | C++ (Arduino) |
 | [`projects/esp32-touch-counter`](projects/esp32-touch-counter) | сенсор TTP223B + вебсторінка-лічильник | C++ (Arduino), HTML, CSS, JS |
+| [`projects/esp32-morse`](projects/esp32-morse) | сенсор як телеграфний ключ: крапки/тире → текст на сторінці | C++ (Arduino), HTML, CSS, JS |
 
 Кожен проєкт збирається через PlatformIO:
 
