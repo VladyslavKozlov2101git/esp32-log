@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="uk">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ESP32 і TTP223B піни</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: filter chips, the board drawing on a workbench panel, selected-pin card + rules side by side, full pin table */
+:root{
+  --bg:#eef1f2; --panel:#ffffff; --bench:#dde5e3; --fg:#1b2327; --muted:#5a676d; --line:#cfd8db;
+  --accent:#0d7a6c; --warn:#b4461a; --warn-bg:#fbeee7;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12171a; --panel:#1a2125; --bench:#1d2829; --fg:#e4eaec; --muted:#9aa8ae; --line:#2d393e;
+  --accent:#4cc0ad; --warn:#f08a5d; --warn-bg:#2c1d16; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171a; --panel:#1a2125; --bench:#1d2829; --fg:#e4eaec; --muted:#9aa8ae; --line:#2d393e;
+  --accent:#4cc0ad; --warn:#f08a5d; --warn-bg:#2c1d16; color-scheme:dark}
+
+body{background:var(--bg);color:var(--fg);font:15px/1.55 var(--sans);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 48px}
+.wrap{max-width:1040px;margin:0 auto;display:grid;gap:22px}
+h1{font-size:clamp(22px,3.4vw,30px);line-height:1.2;margin:0;text-wrap:balance;font-weight:700}
+h2{font-size:17px;margin:0 0 10px;font-weight:600}
+.sub{color:var(--muted);margin:6px 0 0;max-width:68ch}
+code,.m{font-family:var(--mono);font-size:.92em}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{font:500 13px var(--sans);color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer}
+.chips button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.chips button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.bench{background:var(--bench);border:1px solid var(--line);border-radius:14px;overflow-x:auto}
+.bench svg{display:block;width:100%;max-width:760px;min-width:600px;margin:0 auto;height:auto}
+.lbl{fill:var(--muted);font:12px var(--sans)}
+.pin{cursor:pointer;transition:opacity .2s}
+.pin.dim{opacity:.18}
+.pin:focus{outline:none}
+.pin:focus-visible .ring,.pin.sel .ring{stroke-opacity:1}
+.hint{color:var(--muted);font-size:13px;margin:8px 2px 0}
+
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px}
+@media (max-width:760px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+.big{font:700 26px var(--mono);margin:0}
+.badge{display:inline-block;font:600 12px var(--sans);color:#fff;border-radius:999px;padding:2px 10px;vertical-align:middle}
+.tag{display:inline-block;font:12px var(--mono);border:1px solid var(--line);border-radius:999px;padding:1px 8px;margin:0 4px 4px 0}
+.caps{display:flex;flex-wrap:wrap;gap:6px 14px;margin:10px 0 0;padding:0;list-style:none;font-size:14px}
+.yes::before{content:"✓ ";color:#1f9d55;font-weight:700}
+.no{color:var(--muted)}.no::before{content:"✕ ";font-weight:700}
+.warn{background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);border-radius:12px;padding:18px}
+.warn h2{color:var(--warn)}
+.warn ol{margin:0;padding-left:22px;display:grid;gap:7px}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+td:first-child,td:nth-child(2){white-space:nowrap;font-family:var(--mono)}
+tbody tr{cursor:pointer}
+tbody tr:hover,tbody tr.on{background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+[hidden]{display:none!important}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;padding:3px;background:var(--panel);gap:3px;flex-wrap:wrap;justify-self:start}
+.seg button{font:500 14px var(--sans);color:var(--muted);background:none;border:0;border-radius:7px;padding:8px 14px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tip{position:fixed;z-index:20;max-width:320px;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;box-shadow:0 8px 24px rgba(0,0,0,.2);pointer-events:none;font-size:13px;line-height:1.45}
+@media (prefers-reduced-motion:reduce){.pin{transition:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Піни ESP32 і TTP223B</h1>
+    <p class="sub" id="sub"></p>
+  </header>
+
+  <div class="seg" id="boards" role="group" aria-label="Плата">
+    <button data-b="esp32" aria-pressed="true">ESP32 DevKit</button>
+    <button data-b="ttp223b" aria-pressed="false">TTP223B</button>
+  </div>
+
+  <div class="chips" id="chips" role="group" aria-label="Показати піни"></div>
+
+  <figure style="margin:0">
+    <div class="bench" id="fig"></div>
+    <p class="hint">Наведіть мишку на пін або деталь, і з'явиться пояснення. Натисніть, і опис закріпиться в картці нижче.</p>
+  </figure>
+
+  <div class="grid2">
+    <section class="card" id="detail" aria-live="polite"></section>
+    <section class="warn">
+      <h2 id="rules-h"></h2>
+      <ol id="rules"></ol>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Усе на платі</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>Назва</th><th>Мітки</th><th>Що треба знати</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+  </section>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+const CAT={
+  ok:{c:'#1f9d55',t:'вільний'},
+  warn:{c:'#d97a00',t:'обережно на старті'},
+  in:{c:'#1f5fd1',t:'тільки вхід'},
+  busy:{c:'#7d868c',t:'зайнятий USB'},
+  pwr:{c:'#d42a2a',t:'живлення'},
+  gnd:{c:'#2b3036',t:'земля'},
+  svc:{c:'#7b4fd6',t:'скидання'},
+  sig:{c:'#e0a800',t:'сигнал',ink:'#1b2327'},
+  cfg:{c:'#7b4fd6',t:'налаштування'},
+  part:{c:'#4a6670',t:'деталь'}
+};
+const W2='АЦП не працює при ввімкненому Wi-Fi (ADC2).';
+const IN1='Тільки вхід, без внутрішньої підтяжки. Підходить для аналогових датчиків навіть з Wi-Fi (ADC1).';
+const GNDN='Земля, 0 В. Усі GND з’єднані між собою, підходить будь-який.';
+// [напис, GPIO, категорія, мітки, пояснення] — зверху вниз, USB внизу
+const L=[
+  ['EN',null,'svc',['RESET'],'Скидання. LOW = перезапуск, це робить кнопка EN. Нічого сюди не під’єднуйте.'],
+  ['VP',36,'in',['ADC1'],IN1],
+  ['VN',39,'in',['ADC1'],IN1],
+  ['D34',34,'in',['ADC1'],IN1],
+  ['D35',35,'in',['ADC1'],IN1],
+  ['D32',32,'ok',['ADC1','T9'],'Повноцінний пін. Аналоговий вхід працює і з Wi-Fi (ADC1). Є вбудований сенсорний вхід T9.'],
+  ['D33',33,'ok',['ADC1','T8'],'Повноцінний пін. Аналоговий вхід працює і з Wi-Fi (ADC1). Сенсорний вхід T8.'],
+  ['D25',25,'ok',['ADC2','DAC1'],'Справжній аналоговий вихід DAC (8 біт): плавна напруга 0–3.3 В, простий звук. '+W2],
+  ['D26',26,'ok',['ADC2','DAC2'],'Другий DAC. '+W2],
+  ['D27',27,'ok',['ADC2','T7'],'Вільний пін: кнопки, світлодіоди, модулі реле. '+W2],
+  ['D14',14,'warn',['ADC2','T6'],'Під час старту коротко видає ШІМ: реле на цьому піні може клацнути. '+W2],
+  ['D12',12,'warn',['ADC2','T5'],'Strapping-пін. Якщо на старті тут HIGH, плата не завантажиться. Не тягніть до 3V3.'],
+  ['D13',13,'ok',['ADC2','T4'],'Вільний пін. '+W2],
+  ['GND',null,'gnd',['0 В'],GNDN],
+  ['VIN',null,'pwr',['5 В'],'Вхід 5 В для живлення без USB. Коли плата живиться від USB, тут ≈4.7 В: можна живити невеликі 5-вольтові модулі.']
+];
+const R=[
+  ['D23',23,'ok',['SPI MOSI'],'Типовий MOSI шини SPI: SD-картка, дисплей. Без SPI це звичайний пін.'],
+  ['D22',22,'ok',['I2C SCL'],'Типовий SCL шини I2C: MPU6050, RTC, компас. Без I2C це звичайний пін.'],
+  ['TX0',1,'busy',['UART0 TX'],'Через нього йдуть Serial і прошивка по USB. Нічого не під’єднуйте.'],
+  ['RX0',3,'busy',['UART0 RX'],'Через нього йдуть Serial і прошивка по USB. Нічого не під’єднуйте.'],
+  ['D21',21,'ok',['I2C SDA'],'Типовий SDA шини I2C. Без I2C це звичайний пін.'],
+  ['D19',19,'ok',['SPI MISO'],'Типовий MISO шини SPI. Без SPI це звичайний пін.'],
+  ['D18',18,'ok',['SPI SCK'],'Типовий SCK шини SPI. Без SPI це звичайний пін.'],
+  ['D5',5,'warn',['SPI CS'],'Типовий CS для SPI. Strapping-пін: на старті має бути HIGH і коротко видає ШІМ.'],
+  ['TX2',17,'ok',['UART2 TX'],'Другий UART: GPS, зв’язок з Arduino (через узгоджувач рівнів). Інакше звичайний пін.'],
+  ['RX2',16,'ok',['UART2 RX'],'Другий UART, прийом. Інакше звичайний пін.'],
+  ['D4',4,'ok',['ADC2','T0'],'Вільний пін. Сюди в уроці 1 під’єднано сигнал TTP223B. '+W2],
+  ['D2',2,'warn',['LED','ADC2','T2'],'На ньому синій світлодіод плати (blink). Strapping-пін: під час прошивки має бути LOW.'],
+  ['D15',15,'warn',['ADC2','T3'],'Strapping-пін: LOW на старті вимикає лог завантаження. На старті коротко видає ШІМ.'],
+  ['GND',null,'gnd',['0 В'],GNDN],
+  ['3V3',null,'pwr',['3.3 В'],'Вихід 3.3 В зі стабілізатора плати. Живлення датчиків і модулів на 3.3 В.']
+];
+const PINS=[...L.map((p,i)=>({side:'L',i,p})),...R.map((p,i)=>({side:'R',i,p}))];
+const FILTERS=[
+  ['all','Усі',()=>true],
+  ['ok','Вільні',p=>p[2]==='ok'],
+  ['adc','Аналог (ADC)',p=>p[3].some(t=>t.startsWith('ADC'))],
+  ['adc1','Аналог з Wi-Fi',p=>p[3].includes('ADC1')],
+  ['touch','Сенсор (Touch)',p=>p[3].some(t=>/^T\d/.test(t))],
+  ['pwm','ШІМ / вихід',p=>p[1]!==null&&!['in','busy'].includes(p[2])],
+  ['i2c','I2C',p=>p[3].some(t=>t.startsWith('I2C'))],
+  ['spi','SPI',p=>p[3].some(t=>t.startsWith('SPI'))],
+  ['uart','UART',p=>p[3].some(t=>t.startsWith('UART'))],
+  ['dac','DAC',p=>p[3].some(t=>t.startsWith('DAC'))],
+  ['in','Тільки вхід',p=>p[2]==='in'],
+  ['warn','Обережно',p=>['warn','busy'].includes(p[2])]
+];
+
+const PITCH=28, py=i=>118+i*PITCH, LX=419, RX=541, MONO='IBM Plex Mono,Consolas,monospace';
+const pw=t=>t.length*6.7+14;
+function pill(x,y,t,fill,stroke,color,anchorRight){
+  const w=pw(t), x0=anchorRight?x-w:x;
+  return {w,svg:`<rect x="${x0}" y="${y-9}" width="${w}" height="18" rx="9" fill="${fill}" stroke="${stroke}"/><text x="${x0+w/2}" y="${y+4}" text-anchor="middle" font-family="${MONO}" font-size="11" font-weight="600" fill="${color}">${t}</text>`};
+}
+function pinSvg({side,i,p},k,state){
+  const [name,g,cat,tags]=p, y=py(i), L=side==='L', px=L?LX:RX, dir=L?-1:1;
+  let x=L?395:565, s=`<line x1="${L?405:555}" x2="${x}" y1="${y}" y2="${y}" stroke="#8b979c" stroke-width="1.5"/>`;
+  const items=[[g===null?tags[0]:'GPIO'+g,CAT[cat].c,CAT[cat].c,'#fff'],...(g===null?[]:tags.map(t=>['#fff','#b9c4c8','#2a3236',t]).map(([f,st,c,t])=>[t,f,st,c]))];
+  items.forEach(([t,f,st,c])=>{const r=pill(x,y,t,f,st,c,L);s+=r.svg;x+=dir*(r.w+5)});
+  return `<g class="pin${state.dim?' dim':''}${state.sel?' sel':''}" data-k="${k}" tabindex="0" role="button" aria-label="${name}${g!==null?', GPIO'+g:''}"><title>${name}${g!==null?' (GPIO'+g+')':''}: ${p[4]}</title>
+  ${s}<circle class="ring" cx="${px}" cy="${y}" r="10" fill="none" stroke="#0d7a6c" stroke-width="3" stroke-opacity="0"/>
+  <circle cx="${px}" cy="${y}" r="5" fill="#d8b45a"/>
+  <text x="${L?430:530}" y="${y+4}" ${L?'':'text-anchor="end"'} font-family="${MONO}" font-size="11" fill="#e8edf3">${name}</text></g>`;
+}
+function buildPinout(sel,filter){
+  const f=(FILTERS.find(x=>x[0]===filter)||FILTERS[0])[2];
+  let s=`<svg viewBox="160 0 640 690" role="img" aria-label="Розпіновка ESP32 DevKit на 30 пінів">
+  <text x="480" y="26" text-anchor="middle" font-family="IBM Plex Sans,Segoe UI,Arial,sans-serif" font-size="14" font-weight="600" class="lbl">ESP32 DevKit · 30 пінів · USB внизу</text>
+  <rect x="405" y="40" width="150" height="495" rx="8" fill="#1d2b44" stroke="#0e1626"/>
+  <rect x="437" y="50" width="86" height="54" rx="3" fill="#b9bec4" stroke="#8d939a"/>
+  <text x="480" y="74" text-anchor="middle" font-family="${MONO}" font-size="9" fill="#2a2f35">ESP32-WROOM</text>
+  <text x="480" y="88" text-anchor="middle" font-family="${MONO}" font-size="9" fill="#2a2f35">-32</text>
+  <rect x="463" y="527" width="34" height="18" rx="2" fill="#a7adb3" stroke="#7b8187"/>
+  <text x="480" y="562" text-anchor="middle" class="lbl">USB</text>`;
+  PINS.forEach((P,k)=>s+=pinSvg(P,k,{dim:!f(P.p),sel:k===sel}));
+  // legend
+  ['ok','warn','in','busy','pwr','gnd','svc'].map(k=>CAT[k]).forEach((c,j)=>{const x=180+(j%4)*155, y=590+Math.floor(j/4)*24;
+    s+=`<circle cx="${x}" cy="${y}" r="6" fill="${c.c}"/><text x="${x+12}" y="${y+4}" class="lbl">${c.t}</text>`});
+  [['ADC1 / ADC2','аналоговий вхід'],['T0…T9','сенсорний вхід'],['DAC','аналоговий вихід']].forEach(([t,d],j)=>{
+    const x=180+j*210, r=pill(x,648,t,'#fff','#b9c4c8','#2a3236');
+    s+=r.svg+`<text x="${x+r.w+6}" y="652" class="lbl">${d}</text>`});
+  return s+`</svg>`;
+}
+// ---- TTP223B ----
+const T_ITEMS=[
+  {p:['Сенсорна зона',null,'part',['ємнісна'],'Сюди торкаються. Працює і крізь тонкий пластик, скло чи фанеру (до кількох мм), тому модуль можна сховати в корпус. На деяких модулях зона з іншого боку плати.'],
+   draw:`<circle cx="285" cy="205" r="52" fill="#d8474b" stroke="#f08d8f" stroke-width="3"/><text x="285" y="209" text-anchor="middle" font-family="${MONO}" font-size="11" fill="#fff">TOUCH</text>`,
+   lead:'M233 205 H205', at:[200,205,'R'], label:'сенсорна зона'},
+  {p:['Чип TTP223',null,'part',['контролер'],'Мікросхема, що вимірює ємність площадки. Після ввімкнення ~0.5 с калібрується: у цей час не тримайте палець на сенсорі, інакше дотик стане для неї «нормою».'],
+   draw:`<rect x="370" y="140" width="30" height="18" rx="2" fill="#1a1a1a"/><text x="385" y="152" text-anchor="middle" font-family="${MONO}" font-size="7" fill="#ccc">223B</text>`,
+   lead:'M400 149 H440', at:[445,149], label:'чип TTP223'},
+  {p:['LED',null,'part',['індикатор'],'Світиться, коли вихід I/O активний. Зручно перевірити, чи модуль живий, ще до написання коду. Є не на всіх модулях.'],
+   draw:`<rect x="377" y="189" width="16" height="10" rx="2" fill="#ffe1e1" stroke="#8a8f98"/>`,
+   lead:'M393 194 H440', at:[445,194], label:'LED'},
+  {p:['Перемичка A',null,'cfg',['інверсія'],'Розімкнена (заводське): при дотику на I/O буде HIGH. Запаяна: при дотику LOW, у спокої HIGH.'],
+   draw:`<rect x="370" y="240" width="10" height="9" fill="#d8b45a"/><rect x="386" y="240" width="10" height="9" fill="#d8b45a"/><text x="362" y="249" text-anchor="end" font-family="${MONO}" font-size="11" font-weight="600" fill="#fff">A</text>`,
+   lead:'M396 244 H440', at:[445,244], label:'A · інверсія'},
+  {p:['Перемичка B',null,'cfg',['фіксація'],'Розімкнена (заводське): вихід активний, поки тримаєте палець (як кнопка). Запаяна: перший дотик вмикає, другий вимикає (як вимикач світла).'],
+   draw:`<rect x="370" y="275" width="10" height="9" fill="#d8b45a"/><rect x="386" y="275" width="10" height="9" fill="#d8b45a"/><text x="362" y="284" text-anchor="end" font-family="${MONO}" font-size="11" font-weight="600" fill="#fff">B</text>`,
+   lead:'M396 279 H440', at:[445,279], label:'B · фіксація'},
+  {p:['GND',null,'gnd',['0 В'],'Земля. З’єднується з будь-яким GND на ESP32. Без спільної землі сигнал «плаває».'],
+   draw:`<rect x="278" y="332" width="4" height="40" fill="#d8b45a"/><text x="280" y="310" text-anchor="middle" font-family="${MONO}" font-size="11" font-weight="600" fill="#fff">GND</text>`,
+   lead:'M280 372 V405 H205', at:[200,405,'R'], label:'GND → GND'},
+  {p:['I/O',null,'sig',['вихід'],'Цифровий вихід модуля (на інших платах OUT або SIG). Сам видає 0 або 1, підтяжка не потрібна. На ESP32 іде на будь-який вільний пін, в уроці 1 це D4.'],
+   draw:`<rect x="318" y="332" width="4" height="40" fill="#d8b45a"/><text x="320" y="310" text-anchor="middle" font-family="${MONO}" font-size="11" font-weight="600" fill="#fff">I/O</text>`,
+   lead:'M320 372 V431', at:[320,440,'C'], label:'I/O → D4'},
+  {p:['VCC',null,'pwr',['2–5.5 В'],'Живлення 2.0–5.5 В. З ESP32 беріть 3V3: тоді й сигнал на I/O буде 3.3 В, безпечний для піна ESP32. Від 5 В вихід теж стане 5-вольтовим.'],
+   draw:`<rect x="358" y="332" width="4" height="40" fill="#d8b45a"/><text x="360" y="310" text-anchor="middle" font-family="${MONO}" font-size="11" font-weight="600" fill="#fff">VCC</text>`,
+   lead:'M360 372 V405 H435', at:[440,405], label:'VCC → 3V3'}
+];
+function buildTTP(sel){
+  let s=`<svg viewBox="0 0 640 660" role="img" aria-label="Будова модуля TTP223B">
+  <text x="320" y="40" text-anchor="middle" font-family="IBM Plex Sans,Segoe UI,Arial,sans-serif" font-size="14" font-weight="600" class="lbl">TTP223B · вигляд з боку деталей</text>
+  <rect x="220" y="110" width="200" height="220" rx="10" fill="#b8262b" stroke="#7d1418"/>
+  <rect x="262" y="318" width="116" height="14" rx="2" fill="#1a1a1a"/>`;
+  T_ITEMS.forEach(({p,draw,lead,at,label},k)=>{
+    const c=CAT[p[2]], [x,y,a]=at, w=pw(label), x0=a==='R'?x-w:a==='C'?x-w/2:x;
+    s+=`<g class="pin${k===sel?' sel':''}" data-k="${k}" tabindex="0" role="button" aria-label="${p[0]}"><title>${p[0]}: ${p[4]}</title>
+    ${draw}<path d="${lead}" fill="none" stroke="#8b979c" stroke-width="1.5"/>
+    <rect x="${x0}" y="${y-9}" width="${w}" height="18" rx="9" fill="${c.c}" stroke="${k===sel?'#0d7a6c':c.c}" stroke-width="${k===sel?3:1}"/>
+    <text x="${x0+w/2}" y="${y+4}" text-anchor="middle" font-family="${MONO}" font-size="11" font-weight="600" fill="${c.ink||'#fff'}">${label}</text></g>`;
+  });
+  ['pwr','gnd','sig','cfg','part'].forEach((k,j)=>{const x=40+j*120;
+    s+=`<circle cx="${x}" cy="478" r="6" fill="${CAT[k].c}"/><text x="${x+12}" y="482" class="lbl">${CAT[k].t}</text>`});
+  const ab=[['A','B','режим','при дотику'],['—','—','кнопка (поки тримаєш)','HIGH ← заводське'],['запаяна','—','кнопка (поки тримаєш)','LOW'],['—','запаяна','вимикач (дотик / дотик)','HIGH'],['запаяна','запаяна','вимикач (дотик / дотик)','LOW']];
+  s+=`<text x="40" y="524" class="lbl" font-weight="600">Перемички A і B</text>`;
+  ab.forEach((r,i)=>[40,130,230,430].forEach((x,j)=>s+=`<text x="${x}" y="${552+i*22}" class="lbl" ${i===0?'font-weight="600"':''}>${r[j]}</text>`));
+  return s+`</svg>`;
+}
+// --- page ---
+const BOARDS={
+  esp32:{items:PINS,build:(s,f)=>buildPinout(s,f),filters:true,start:'D4',
+    sub:'30-пінова плата (DOIT DevKit V1), USB донизу. Колір пігулки показує, наскільки пін вільний, сірі мітки показують, що він уміє.',
+    rulesH:'Шість правил',
+    rules:['На будь-який пін — <b>не більше 3.3 В</b>. Сигнал 5 В (Arduino, HC-SR04 Echo) спалить пін.','Пін дає ~12 мА спокійно, 40 мА максимум. Світлодіод — через резистор, мотор і реле — тільки через драйвер.','<b>ADC2 не працює, коли увімкнено Wi-Fi.</b> Аналогові датчики у Wi-Fi проєктах — на ADC1 (32–39).','<code>34, 35, VP, VN</code> — <b>тільки вхід</b> і без внутрішньої підтяжки.','Помаранчеві (2, 5, 12, 14, 15) впливають на старт плати. Не вішайте на них те, що тягне до 3V3 або боїться смикань.','<code>TX0 / RX0</code> зайняті USB: через них Serial і прошивка.']},
+  ttp223b:{items:T_ITEMS,build:s=>buildTTP(s),filters:false,start:'I/O',
+    sub:'Ємнісна сенсорна кнопка. Три піни для з’єднання, дві перемички для налаштування, світлодіод для перевірки.',
+    rulesH:'Що треба знати',
+    rules:['Живіть від <code>3V3</code> ESP32: тоді сигнал I/O теж 3.3 В і безпечний для піна.','Не тримайте палець на сенсорі, коли подаєте живлення: модуль калібрується ~0.5 с.','Модуль бачить палець крізь пластик, скло, фанеру товщиною кілька мм. Метал поруч заважає.','Заводський режим: HIGH, поки торкаєтесь. Перемички A і B змінюють це (таблиця на схемі).','Підтяжка на вході ESP32 не потрібна: модуль сам видає чіткі 0 і 1.']}
+};
+const fig=document.getElementById('fig'), det=document.getElementById('detail'), rows=document.getElementById('rows'), tip=document.getElementById('tip');
+let board='esp32', sel=0, filter='all';
+const cur=()=>BOARDS[board];
+const fullName=([n,g])=>g===null?n:`${n} <span class="m" style="color:var(--muted)">GPIO${g}</span>`;
+const badge=cat=>`<span class="badge" style="background:${CAT[cat].c};color:${CAT[cat].ink||'#fff'}">${CAT[cat].t}</span>`;
+function detail(){
+  const [name,g,cat,tags,note]=cur().items[sel].p, io=g!==null;
+  const cap=(ok,t)=>`<li class="${ok?'yes':'no'}">${t}</li>`, out=!['in','busy'].includes(cat);
+  det.innerHTML=`<h2>Вибрано</h2><p class="big">${fullName([name,g])}</p>
+  <p style="margin:8px 0">${badge(cat)}</p>
+  <div>${tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+  <p style="margin:8px 0 0">${note}</p>
+  ${io?`<ul class="caps">${cap(cat!=='busy','вхід')}${cap(out,'вихід')}${cap(out,'ШІМ')}${cap(out,'підтяжка')}</ul>`:''}`;
+}
+function render(){
+  fig.innerHTML=cur().build(sel,filter);
+  detail();
+  [...rows.children].forEach((tr,k)=>tr.classList.toggle('on',k===sel));
+  document.querySelectorAll('#chips button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.f===filter));
+}
+function setBoard(name){
+  board=BOARDS[name]?name:'esp32'; const b=cur();
+  sel=Math.max(0,b.items.findIndex(x=>x.p[0]===b.start)); filter='all'; tip.hidden=true;
+  document.getElementById('sub').textContent=b.sub;
+  document.getElementById('rules-h').textContent=b.rulesH;
+  document.getElementById('rules').innerHTML=b.rules.map(r=>`<li>${r}</li>`).join('');
+  document.getElementById('chips').hidden=!b.filters;
+  document.querySelectorAll('#boards button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.b===board));
+  rows.innerHTML=b.items.map(({p:[n,g,cat,tags,note]})=>`<tr><td><span class="dot" style="background:${CAT[cat].c}"></span>${fullName([n,g])}</td><td>${tags.join(', ')}</td><td>${note}</td></tr>`).join('');
+  render();
+}
+document.getElementById('chips').innerHTML=FILTERS.map(([k,t])=>`<button data-f="${k}" aria-pressed="false">${t}</button>`).join('');
+document.getElementById('chips').onclick=e=>{const b=e.target.closest('button');if(b){filter=b.dataset.f;render()}};
+document.getElementById('boards').onclick=e=>{const b=e.target.closest('button');if(b){location.hash=b.dataset.b;setBoard(b.dataset.b)}};
+rows.onclick=e=>{const tr=e.target.closest('tr');if(tr){sel=[...rows.children].indexOf(tr);render();fig.scrollIntoView({block:'nearest',behavior:'smooth'})}};
+fig.onclick=e=>{const g=e.target.closest('.pin');if(g){sel=+g.dataset.k;render()}};
+fig.onkeydown=e=>{const g=e.target.closest('.pin');if(g&&(e.key==='Enter'||e.key===' ')){e.preventDefault();sel=+g.dataset.k;render();fig.querySelector(`.pin[data-k="${sel}"]`)?.focus()}};
+// підказка при наведенні
+fig.addEventListener('pointermove',e=>{
+  const g=e.target.closest('.pin');
+  if(!g||e.pointerType==='touch'){tip.hidden=true;return}
+  const key=board+g.dataset.k;
+  if(tip.dataset.k!==key){tip.dataset.k=key;
+    const [name,gpio,cat,,note]=cur().items[+g.dataset.k].p;
+    tip.innerHTML=`<b>${fullName([name,gpio])}</b> ${badge(cat)}<div style="margin-top:6px">${note}</div>`}
+  tip.hidden=false;
+  const r=tip.getBoundingClientRect();
+  tip.style.left=Math.max(8,Math.min(e.clientX+16,innerWidth-r.width-8))+'px';
+  tip.style.top=(e.clientY+16+r.height>innerHeight?e.clientY-r.height-12:e.clientY+16)+'px';
+});
+fig.addEventListener('pointerleave',()=>tip.hidden=true);
+addEventListener('hashchange',()=>{if(location.hash.slice(1)!==board)setBoard(location.hash.slice(1))});
+setBoard(location.hash.slice(1));
+</script>

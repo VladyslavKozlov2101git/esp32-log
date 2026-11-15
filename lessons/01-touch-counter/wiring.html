@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="uk">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ESP32 + TTP223B wiring</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one workbench panel with the drawing, connection table and steps under it, single column */
+:root{
+  --bg:#eef1f2; --panel:#ffffff; --bench:#dde5e3; --fg:#1b2327; --muted:#5a676d; --line:#cfd8db;
+  --accent:#0d7a6c; --warn:#b4461a; --warn-bg:#fbeee7;
+  --vcc:#d42a2a; --gnd:#1f5fd1; --sig:#e0a800;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12171a; --panel:#1a2125; --bench:#1d2829; --fg:#e4eaec; --muted:#9aa8ae; --line:#2d393e;
+  --accent:#4cc0ad; --warn:#f08a5d; --warn-bg:#2c1d16; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171a; --panel:#1a2125; --bench:#1d2829; --fg:#e4eaec; --muted:#9aa8ae; --line:#2d393e;
+  --accent:#4cc0ad; --warn:#f08a5d; --warn-bg:#2c1d16; color-scheme:dark}
+
+body{background:var(--bg);color:var(--fg);font:15px/1.55 var(--sans);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 48px}
+.wrap{max-width:1040px;margin:0 auto;display:grid;gap:22px}
+h1{font-size:clamp(22px,3.4vw,30px);line-height:1.2;margin:0;text-wrap:balance;font-weight:700}
+h2{font-size:17px;margin:0 0 10px;font-weight:600}
+.sub{color:var(--muted);margin:6px 0 0;max-width:68ch}
+code,.m{font-family:var(--mono);font-size:.92em}
+
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;padding:3px;background:var(--panel);gap:3px;flex-wrap:wrap}
+.seg button{font:500 14px var(--sans);color:var(--muted);background:none;border:0;border-radius:7px;padding:8px 14px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.bench{background:var(--bench);border:1px solid var(--line);border-radius:14px;overflow-x:auto}
+.bench svg{display:block;width:100%;min-width:720px;height:auto}
+.lbl{fill:var(--muted);font:12px var(--sans)}
+.lbl-b{fill:var(--fg);font:600 13px var(--sans)}
+.wire{transition:opacity .2s}
+[data-focus="vcc"] [data-w]:not([data-w="vcc"]),
+[data-focus="gnd"] [data-w]:not([data-w="gnd"]),
+[data-focus="sig"] [data-w]:not([data-w="sig"]){opacity:.12}
+.hint{color:var(--muted);font-size:13px;margin:8px 2px 0}
+
+.grid2{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:22px}
+@media (max-width:760px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-weight:600;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+tbody tr{cursor:pointer}
+tbody tr:hover,tbody tr:focus-visible,tbody tr.on{background:color-mix(in srgb,var(--accent) 10%,transparent);outline:none}
+.chip{display:inline-block;width:26px;height:6px;border-radius:3px;vertical-align:middle;margin-right:6px}
+
+ol{margin:0;padding-left:22px;display:grid;gap:8px}
+ol li::marker{font-family:var(--mono);color:var(--accent);font-weight:600}
+.warn{background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);border-radius:12px;padding:14px 18px}
+.warn h2{color:var(--warn)}
+.warn ul,.notes ul{margin:0;padding-left:20px;display:grid;gap:6px}
+@media (prefers-reduced-motion:reduce){.wire{transition:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>ESP32 + сенсорна кнопка TTP223B</h1>
+    <p class="sub">Три дроти: живлення, земля і сигнал. Наведіть або натисніть на рядок таблиці, щоб підсвітити один дріт на малюнку.</p>
+  </header>
+
+  <figure style="margin:0">
+    <h2>Як з'єднані отвори макетки</h2>
+    <div class="bench" id="inside"></div>
+    <p class="hint">П'ять отворів одного стовпця (a–e) з'єднані між собою. Нижня половина (f–j) — окрема група. Сусідні стовпці між собою не з'єднані.</p>
+  </figure>
+
+  <div class="seg" role="group" aria-label="Варіант підключення">
+    <button id="btn-b" aria-pressed="true" data-v="b">Б · Через макетну плату</button>
+    <button id="btn-a" aria-pressed="false" data-v="a">А · Напряму, без плати</button>
+  </div>
+
+  <figure style="margin:0">
+    <div class="bench" id="fig"></div>
+    <p class="hint" id="cap"></p>
+  </figure>
+
+  <div class="grid2">
+    <section class="card">
+      <h2>Що куди</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>Модуль</th><th class="col-bb">Макетка</th><th>ESP32</th><th>Дріт</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table></div>
+      <p class="hint" id="wiretype"></p>
+    </section>
+    <section class="card">
+      <h2>Порядок дій</h2>
+      <ol id="steps"></ol>
+    </section>
+  </div>
+
+  <section class="warn">
+    <h2>Перевірте перед тим, як вставити USB</h2>
+    <ul>
+      <li>Червоний дріт іде на <b class="m">3V3</b>. Не на <b class="m">VIN</b> і не на <b class="m">5V</b>: VIN стоїть у тому ж нижньому ряду, тільки з іншого боку плати.</li>
+      <li>Три ніжки модуля стоять у <b>трьох різних</b> стовпцях. Дві ніжки в одному стовпці дають коротке замикання.</li>
+      <li>Дріт входить у <b>той самий</b> стовпець, що й ніжка. Сусідній стовпець з нею не з'єднаний.</li>
+    </ul>
+  </section>
+
+  <section class="card notes">
+    <h2>Якщо ваша плата виглядає інакше</h2>
+    <ul>
+      <li><b>Порядок ніжок на модулі.</b> На малюнку <code>GND · I/O · VCC</code>, але бувають модулі з іншим порядком. Орієнтуйтесь на підписи біля ніжок: колір дроту відповідає підпису, а не номеру стовпця.</li>
+      <li><b>Розпіновка ESP32.</b> Намальовано 30-пінову DevKit (DOIT), USB донизу. Знайдіть на своїй платі написи <code>3V3</code>, <code>GND</code>, <code>D4</code> (або <code>IO4</code>, <code>G4</code>).</li>
+      <li><b>Підписи рядів.</b> Плата на 400 точок має ряди <code>a–e</code> і <code>f–j</code>. Якщо у вас написано інакше, це не важливо: тут використовується лише верхня половина, <code>a–e</code>.</li>
+      <li><b>Чому ESP32 не стоїть у макетці.</b> 30-пінова DevKit широка: на платі на 400 точок вона закриває майже всі отвори, і дроти нікуди вставити. Тому вона лежить поруч.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+const C={vcc:'#d42a2a',gnd:'#1f5fd1',sig:'#e0a800'};
+const P=20, colX=c=>330+(c-1)*P;
+const R={a:215,b:235,c:255,d:275,e:295,f:345,g:365,h:385,i:405,j:425};
+const RIGHT=['D23','D22','TX0','RX0','D21','D19','D18','D5','TX2','RX2','D4','D2','D15','GND','3V3'];
+const LEFT=['EN','VP','VN','D34','D35','D32','D33','D25','D26','D27','D14','D12','D13','GND','VIN'];
+const pinY=i=>110+i*22, RX=168, LX=42;
+const esp={vcc:{x:RX,y:pinY(14)},gnd:{x:RX,y:pinY(13)},sig:{x:RX,y:pinY(10)}};
+// module pin order left→right as printed on most TTP223B boards
+const MOD=[['gnd','GND'],['sig','I/O'],['vcc','VCC']];
+
+function espSvg(){
+  let s=`<rect x="30" y="40" width="150" height="415" rx="8" fill="#1d2b44" stroke="#0e1626"/>
+  <rect x="62" y="48" width="86" height="54" rx="3" fill="#b9bec4" stroke="#8d939a"/>
+  <text x="105" y="72" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="9" fill="#2a2f35">ESP32-WROOM</text>
+  <text x="105" y="86" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="9" fill="#2a2f35">-32</text>
+  <rect x="88" y="446" width="34" height="18" rx="2" fill="#a7adb3" stroke="#7b8187"/>
+  <text x="105" y="480" text-anchor="middle" class="lbl">USB</text>`;
+  RIGHT.forEach((n,i)=>s+=`<circle cx="${RX}" cy="${pinY(i)}" r="4.5" fill="#d8b45a"/><text x="157" y="${pinY(i)+4}" text-anchor="end" font-family="IBM Plex Mono,monospace" font-size="10" fill="#e8edf3">${n}</text>`);
+  LEFT.forEach((n,i)=>s+=`<circle cx="${LX}" cy="${pinY(i)}" r="4.5" fill="#d8b45a"/><text x="53" y="${pinY(i)+4}" font-family="IBM Plex Mono,monospace" font-size="10" fill="${n==='VIN'?'#ff9b73':'#e8edf3'}">${n}</text>`);
+  for(const k in esp) s+=`<circle data-w="${k}" class="wire" cx="${esp[k].x}" cy="${esp[k].y}" r="9" fill="none" stroke="${C[k]}" stroke-width="2.5"/>`;
+  return s+`<text x="105" y="30" text-anchor="middle" class="lbl-b">ESP32 DevKit</text>`;
+}
+
+function moduleSvg(x,y){ // x,y = tip of the leftmost pin
+  let s=`<g><rect x="${x-17}" y="${y-122}" width="74" height="100" rx="5" fill="#b8262b" stroke="#7d1418"/>
+  <circle cx="${x+20}" cy="${y-82}" r="25" fill="#d8474b" stroke="#f08d8f" stroke-width="2"/>
+  <text x="${x+20}" y="${y-79}" text-anchor="middle" font-size="9" font-family="IBM Plex Mono,monospace" fill="#fff">TOUCH</text>`;
+  MOD.forEach(([k,n],i)=>{const px=x+i*P;
+    s+=`<rect x="${px-1.5}" y="${y-22}" width="3" height="22" fill="#d8b45a"/><text x="${px}" y="${y-30}" text-anchor="middle" font-size="8.5" font-family="IBM Plex Mono,monospace" font-weight="600" fill="#fff">${n}</text>`});
+  return s+`<text x="${x+20}" y="${y-130}" text-anchor="middle" class="lbl-b">TTP223B</text></g>`;
+}
+
+function wire(k,a,b,dx,dy,endA,endB){
+  const d=`M${a.x} ${a.y} C${a.x+dx} ${a.y} ${b.x} ${b.y+dy} ${b.x} ${b.y}`;
+  return `<g class="wire" data-w="${k}">
+  <path d="${d}" fill="none" stroke="#000" stroke-opacity=".3" stroke-width="8" stroke-linecap="round"/>
+  <path d="${d}" fill="none" stroke="${C[k]}" stroke-width="5.5" stroke-linecap="round"/>
+  ${endA}${endB}</g>`;
+}
+const femaleH=(p)=>`<rect x="${p.x-5}" y="${p.y-5}" width="22" height="10" rx="2" fill="#1a1a1a"/>`;
+const femaleV=(p)=>`<rect x="${p.x-5}" y="${p.y-3}" width="10" height="22" rx="2" fill="#1a1a1a"/>`;
+const maleV=(p,k)=>`<rect x="${p.x-5}" y="${p.y+4}" width="10" height="20" rx="2" fill="#1a1a1a"/><circle cx="${p.x}" cy="${p.y}" r="4" fill="${C[k]}" stroke="#000" stroke-opacity=".5"/>`;
+
+// groups: [col, 'top'|'bot', color, data-w key?] — highlighted connected column strips
+function boardSvg(groups){
+  let s=`<rect x="300" y="148" width="640" height="345" rx="8" fill="#f3f1ea" stroke="#d6d1c4"/>
+  <rect x="306" y="310" width="628" height="20" fill="#e3ded1"/>`;
+  // rails: 25 holes, groups of 5
+  const rails=[[166,'+',C.vcc],[184,'−',C.gnd],[453,'−',C.gnd],[471,'+',C.vcc]];
+  rails.forEach(([y,sym,col])=>{
+    const ly=sym==='+'?(y<300?y-11:y+11):(y<300?y+11:y-11);
+    s+=`<line x1="322" x2="918" y1="${ly}" y2="${ly}" stroke="${col}" stroke-width="2" opacity=".7"/><text x="312" y="${y+4}" font-size="13" font-weight="700" fill="${col}" text-anchor="middle">${sym}</text>`;
+    for(let c=1;c<=30;c++) if(c%6) s+=`<rect x="${colX(c)-3.5}" y="${y-3.5}" width="7" height="7" rx="1.5" fill="#4a4740"/>`;
+  });
+  groups.forEach(([c,half,col,k])=>s+=`<rect class="wire" ${k?`data-w="${k}"`:''} x="${colX(c)-8}" y="${half==='top'?205:335}" width="16" height="100" rx="8" fill="${col}" fill-opacity=".18" stroke="${col}" stroke-opacity=".7"/>`);
+  const hot=groups.map(g=>g[0]);
+  for(const r in R){
+    s+=`<text x="316" y="${R[r]+4}" text-anchor="middle" font-size="11" font-family="IBM Plex Mono,monospace" fill="#8a8578">${r}</text><text x="925" y="${R[r]+4}" text-anchor="middle" font-size="11" font-family="IBM Plex Mono,monospace" fill="#8a8578">${r}</text>`;
+    for(let c=1;c<=30;c++) s+=`<rect x="${colX(c)-3.5}" y="${R[r]-3.5}" width="7" height="7" rx="1.5" fill="#4a4740"/>`;
+  }
+  for(let c=1;c<=30;c++) if(c===1||c%5===0||hot.includes(c))
+    s+=`<text x="${colX(c)}" y="324" text-anchor="middle" font-size="${hot.includes(c)?12:10}" font-weight="${hot.includes(c)?700:400}" font-family="IBM Plex Mono,monospace" fill="${hot.includes(c)?'#2b2820':'#8a8578'}">${c}</text>`;
+  return s;
+}
+const note=(x,y,t)=>`<text x="${x}" y="${y+4}" font-family="IBM Plex Sans,Segoe UI,Arial,sans-serif" font-size="12" font-weight="600" fill="#2b2820" stroke="#f3f1ea" stroke-width="5" paint-order="stroke">${t}</text>`;
+
+function buildInside(){
+  const G='#1f9d55', V='#7b4fd6';
+  let s=`<svg viewBox="290 120 660 390" role="img" aria-label="Як з'єднані отвори макетної плати: стовпець з 5 отворів, дві половини, шини живлення">`;
+  s+=boardSvg([[3,'top',G],[3,'bot',V],[12,'top',G],[12,'bot',V]]);
+  s+=`<rect x="${colX(1)-8}" y="158" width="${colX(30)-colX(1)+16}" height="16" rx="8" fill="${C.vcc}" fill-opacity=".15" stroke="${C.vcc}" stroke-opacity=".6"/>
+  <rect x="${colX(1)-8}" y="176" width="${colX(30)-colX(1)+16}" height="16" rx="8" fill="${C.gnd}" fill-opacity=".15" stroke="${C.gnd}" stroke-opacity=".6"/>`;
+  s+=note(colX(3)+11,R.c,'← a–e стовпця 3: одна точка')+note(colX(3)+11,R.h,'← f–j стовпця 3: інша точка')
+    +note(colX(12)+11,R.b,'← стовпець 12 з 3 не з’єднаний')+note(colX(14),320,'канавка: верх і низ розділені');
+  s+=`<text x="620" y="140" text-anchor="middle" class="lbl">шини + і − тягнуться вздовж усієї плати</text>`;
+  return s+`</svg>`;
+}
+
+function buildB(){
+  let s=`<svg viewBox="0 0 960 510" role="img" aria-label="ESP32 поруч з макетною платою; TTP223B у рядку a, стовпці 5–7; три дроти з рядка c до 3V3, GND і D4">`;
+  s+=boardSvg(MOD.map(([k],i)=>[5+i,'top',C[k],k]))+espSvg()+moduleSvg(colX(5),R.a);
+  MOD.forEach(([k],i)=>{const h={x:colX(5+i),y:R.c};
+    s+=wire(k,esp[k],h,170+i*30,150+i*20,femaleH(esp[k]),maleV(h,k))});
+  s+=note(colX(9)-4,R.c,'← дроти в ряд c')+note(colX(9)-4,R.a,'← ніжки модуля в ряд a');
+  return s+`</svg>`;
+}
+function buildA(){
+  const mx=520,my=300;
+  let s=`<svg viewBox="0 0 960 510" role="img" aria-label="ESP32 і TTP223B, з'єднані трьома дротами мама-мама напряму">`;
+  s+=espSvg()+moduleSvg(mx,my);
+  MOD.forEach(([k],i)=>{const p={x:mx+i*P,y:my};
+    s+=wire(k,esp[k],p,160+i*30,130+i*25,femaleH(esp[k]),femaleV(p))});
+  s+=`<text x="620" y="300" class="lbl">мама на ніжку модуля</text><text x="200" y="460" class="lbl">мама на пін ESP32</text>`;
+  return s+`</svg>`;
+}
+
+const DATA={
+  b:{cap:'Підсвічені смужки: п’ять отворів a–e в одному стовпці з’єднані між собою, тому ніжка в 5a і дріт у 5c — це одна точка.',
+     type:'Дроти «тато-мама» (M-F): тато в отвір макетки, мама на пін ESP32.',
+     rows:[['gnd','GND','5a → 5c','GND','синій'],['sig','I/O','6a → 6c','D4','жовтий'],['vcc','VCC','7a → 7c','3V3','червоний']],
+     steps:['Від’єднайте USB від ESP32.','Вставте TTP223B ніжками в ряд <b>a</b>, стовпці <b>5, 6, 7</b>. Кожна ніжка у свій стовпець.','Прочитайте підписи на модулі: яка ніжка в якому стовпці. На малюнку GND у 5, I/O у 6, VCC у 7.','Синій дріт: <span class="m">5c</span> → <span class="m">GND</span> на ESP32.','Жовтий дріт: <span class="m">6c</span> → <span class="m">D4</span>.','Червоний дріт: <span class="m">7c</span> → <span class="m">3V3</span>.','Перевірте очима червоний: саме 3V3. Потім вставте USB.','Торкніться сенсора: на модулі засвітиться LED. Телефон → Wi-Fi <span class="m">ESP32-Counter</span> → <span class="m">192.168.4.1</span>.']},
+  a:{cap:'Найкоротший шлях: макетка не потрібна, кожен дріт з’єднує ніжку модуля з піном ESP32.',
+     type:'Дроти «мама-мама» (F-F): і на ESP32, і на модулі стирчать штирі.',
+     rows:[['gnd','GND','','GND','синій'],['sig','I/O','','D4','жовтий'],['vcc','VCC','','3V3','червоний']],
+     steps:['Від’єднайте USB від ESP32.','Візьміть три дроти «мама-мама».','Синій: <span class="m">GND</span> модуля → <span class="m">GND</span> ESP32.','Жовтий: <span class="m">I/O</span> модуля → <span class="m">D4</span>.','Червоний: <span class="m">VCC</span> модуля → <span class="m">3V3</span>.','Перевірте червоний, вставте USB, торкніться сенсора.']}
+};
+
+const fig=document.getElementById('fig'), rows=document.getElementById('rows');
+function setFocus(k){fig.dataset.focus=k||'';[...rows.children].forEach(tr=>tr.classList.toggle('on',tr.dataset.k===k))}
+function show(v){
+  const d=DATA[v];
+  fig.innerHTML=v==='b'?buildB():buildA();
+  document.getElementById('cap').textContent=d.cap;
+  document.getElementById('wiretype').textContent=d.type;
+  document.querySelectorAll('.col-bb').forEach(e=>e.hidden=v!=='b');
+  rows.innerHTML=d.rows.map(([k,m,bb,e,col])=>`<tr tabindex="0" data-k="${k}"><td class="m">${m}</td>${v==='b'?`<td class="m">${bb}</td>`:''}<td class="m"><b>${e}</b></td><td><span class="chip" style="background:${C[k]}"></span>${col}</td></tr>`).join('');
+  document.getElementById('steps').innerHTML=d.steps.map(t=>`<li>${t}</li>`).join('');
+  document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===v));
+  setFocus(null);
+}
+let pinned=null;
+rows.addEventListener('mouseover',e=>{const tr=e.target.closest('tr');if(tr&&!pinned)setFocus(tr.dataset.k)});
+rows.addEventListener('mouseleave',()=>{if(!pinned)setFocus(null)});
+rows.addEventListener('click',e=>{const tr=e.target.closest('tr');if(!tr)return;pinned=pinned===tr.dataset.k?null:tr.dataset.k;setFocus(pinned)});
+rows.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.target.click()}});
+document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{pinned=null;show(b.dataset.v)});
+document.getElementById('inside').innerHTML=buildInside();
+show('b');
+</script>
