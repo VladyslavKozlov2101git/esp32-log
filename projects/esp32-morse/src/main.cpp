@@ -5,6 +5,7 @@
 // ---------- Налаштування ----------
 static const int TOUCH_PIN = 4;     // TTP223B OUT -> GPIO4
 static const int BUZZER_PIN = 18;   // п'єзо-пищалка (необов'язково)
+static const int LED_PIN = 19;      // світлодіод через резистор 220 Ом (2 = синій на платі, без дротів)
 
 static const char *AP_SSID = "ESP32-Morse";
 static const char *AP_PASS = "12345678";
@@ -239,6 +240,7 @@ void setup() {
   Serial.println("=== ESP32 morse key ===");
 
   pinMode(TOUCH_PIN, INPUT);
+  pinMode(LED_PIN, OUTPUT);
   ledcAttach(BUZZER_PIN, 700, 10);  // канал тону, стартує вимкненим
 
   bool ok = WiFi.softAP(AP_SSID, AP_PASS);
@@ -264,12 +266,14 @@ void loop() {
     pressed = true;
     pressStart = now;
     ledcWriteTone(BUZZER_PIN, 700);  // живий сайдтон, поки тримають
+    digitalWrite(LED_PIN, HIGH);     // сигнальний ліхтар світить разом з ключем
   }
 
   // Кінець дотику — визначаємо крапку/тире
   if (!raw && pressed) {
     pressed = false;
     ledcWrite(BUZZER_PIN, 0);
+    digitalWrite(LED_PIN, LOW);
     unsigned long held = now - pressStart;
     lastSymbol = (held < DOT_MAX_MS) ? "." : "-";
     buffer += lastSymbol;
