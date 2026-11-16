@@ -4,7 +4,7 @@
 
 - [`LOG.md`](LOG.md) — журнал, нові сесії додаються вгору.
 - [`hardware/INVENTORY.md`](hardware/INVENTORY.md) — інвентар обладнання (що є, у якому стані, що з нього можна зробити).
-- [`lessons/`](lessons/) — уроки з рисунками схем: [00 — піни ESP32 і TTP223B](lessons/00-esp32-pins/README.md), [01 — сенсорна кнопка TTP223B](lessons/01-touch-counter/README.md).
+- [`lessons/`](lessons/) — уроки з рисунками схем: [00 — піни ESP32 і TTP223B](lessons/00-esp32-pins/README.md), [01 — сенсорна кнопка TTP223B](lessons/01-touch-counter/README.md), [02 — Морзе-ключ зі світлодіодом](lessons/02-morse-led/README.md).
 - [`docs/breadboard.md`](docs/breadboard.md) — як користуватись макетною платою і як під'єднати перший модуль.
 - `hardware/photos/` — фото компонентів для ідентифікації.
 
