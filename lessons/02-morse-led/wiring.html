@@ -51,6 +51,10 @@ ol li::marker{font-family:var(--mono);color:var(--accent);font-weight:600}
 .path span{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:0 10px;margin:2px 0}
 .warn{background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);border-radius:12px;padding:16px 18px}
 .warn h2{color:var(--warn)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;padding:3px;background:var(--panel);gap:3px;flex-wrap:wrap;justify-self:start}
+.seg button{font:500 14px var(--sans);color:var(--muted);background:none;border:0;border-radius:7px;padding:8px 14px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .tip{position:fixed;z-index:20;max-width:320px;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;box-shadow:0 8px 24px rgba(0,0,0,.2);pointer-events:none;font-size:13px;line-height:1.45}
 @media (prefers-reduced-motion:reduce){[data-w]{transition:none}}
 </style>
@@ -58,8 +62,13 @@ ol li::marker{font-family:var(--mono);color:var(--accent);font-weight:600}
 <div class="wrap">
   <header>
     <h1>Морзе-ключ зі світлодіодом</h1>
-    <p class="sub">Схема з уроку 1 плюс RGB-світлодіод на D19, поки світить тільки червоний колір. Він світить, поки палець на сенсорі: крапка — короткий спалах, тире — довгий. Наведіть мишку на деталь чи дріт, щоб прочитати, навіщо він.</p>
+    <p class="sub" id="sub"></p>
   </header>
+
+  <div class="seg" id="variants" role="group" aria-label="Який світлодіод">
+    <button data-v="rgb" aria-pressed="true">RGB на 4 ніжки</button>
+    <button data-v="ky034" aria-pressed="false">Модуль 7 кольорів (KY-034)</button>
+  </div>
 
   <figure style="margin:0">
     <div class="bench" id="fig"></div>
@@ -83,19 +92,13 @@ ol li::marker{font-family:var(--mono);color:var(--accent);font-weight:600}
 
   <section class="card">
     <h2>Шлях струму через світлодіод</h2>
-    <div class="path">
-      <span>D19 (3.3 В)</span> → <span>дріт</span> → <span>стовпець 12</span> → <span>резистор 220 Ом</span> → <span>стовпець 16</span> → <span>LED: R → спільна</span> → <span>стовпець 17</span> → <span>перемичка</span> → <span>стовпець 5</span> → <span>GND</span>
-    </div>
+    <div class="path" id="path"></div>
     <p class="hint">Коло має бути замкненим від піна до землі. Розірвіть будь-яку ланку, і світлодіод не світитиме.</p>
   </section>
 
   <section class="warn">
     <h2>Перевірте перед тим, як вставити USB</h2>
-    <ul>
-      <li>Ніжки резистора в <b>різних</b> стовпцях (12 і 16). Якщо обидві в одному стовпці, резистор нічого не обмежує, і світлодіод може згоріти разом з піном.</li>
-      <li>Найдовша ніжка RGB (спільна) — у стовпці 17. Червона (одна ніжка з того боку від найдовшої) — у стовпці 16, разом з резистором.</li>
-      <li>Якщо не світить нічого, у вас, мабуть, спільний анод. Переставте перемичку з <code>17e</code> на <code>7e</code> (3V3): червоний світитиме постійно й гаснутиме при дотику. Тоді логіку в коді треба перевернути. Від 3.3 В навиворіт світлодіоду нічого не буде.</li>
-    </ul>
+    <ul id="checks"></ul>
   </section>
 </div>
 <div class="tip" id="tip" hidden></div>
@@ -118,7 +121,10 @@ const T={
   led:'Зелений дріт: D19 → стовпець 12. Коли палець на сенсорі, код подає на D19 3.3 В.',
   res:'Резистор 220 Ом (червоний · червоний · коричневий). Обмежує струм до ~6 мА. Без нього згорять і світлодіод, і пін. Полярності немає, можна будь-яким боком.',
   ledp:'RGB-світлодіод на 4 ніжки. Найдовша — спільна, у 17d. Червона (одна ніжка з того боку від найдовшої) — у 16d, разом з резистором. Зелена й синя (18d, 19d) поки ні до чого не під’єднані. Якщо у вас спільний анод, перемичку з 17e ведіть на 7e (3V3).',
-  jmp:'Перемичка «тато-тато»: 17e → 5e. З’єднує спільну ніжку RGB зі стовпцем 5, тобто з GND.'
+  jmp:'Перемичка «тато-тато»: 17e → 5e. З’єднує спільну ніжку RGB зі стовпцем 5, тобто з GND.',
+  led2:'Зелений дріт: D19 → стовпець 15, де стоїть пін S модуля. Коли палець на сенсорі, код подає на D19 3.3 В, і модуль вмикається.',
+  jmp2:'Перемичка «тато-тато»: 17e → 5e. З’єднує мінус модуля зі стовпцем 5, тобто з GND.',
+  ky:'KY-034. Усередині світлодіода мікросхема, яка сама перебирає 7 кольорів: ми лише вмикаємо й вимикаємо його. S (a15) — сигнал з D19. Середній (a16) нікуди не веде, лишаємо вільним. − (a17) — земля. Резистор не потрібен: з ним при 3.3 В світлодіоду не вистачить напруги.'
 };
 const tipA=k=>`data-tip="${k}"><title>${T[k]}</title>`;
 
@@ -188,45 +194,72 @@ function led(c0,y){ // RGB, 4 ніжки: R, спільна (найдовша), 
 }
 const note=(x,y,t)=>`<text x="${x}" y="${y+4}" font-family="IBM Plex Sans,Segoe UI,Arial,sans-serif" font-size="12" font-weight="600" fill="#2b2820" stroke="#f3f1ea" stroke-width="5" paint-order="stroke">${t}</text>`;
 
-function build(){
-  let s=`<svg viewBox="0 0 960 510" role="img" aria-label="ESP32, TTP223B і світлодіод з резистором на макетній платі">`;
-  s+=boardSvg([[5,C.gnd,'gnd'],[6,C.sig,'sig'],[7,C.vcc,'vcc'],[12,C.led,'led'],[16,C.mid,'mid'],[17,C.gnd,'gnd']]);
+function kySvg(x,y){ // KY-034, x,y — кінчик піна S
+  const pins=[['S','#ffffff'],['·','#9aa0a6'],['−','#ffffff']];
+  let s=`<g data-w="mid" ${tipA('ky')}<defs><linearGradient id="rainbow" x1="0" x2="1" y1="0" y2="1">
+    <stop offset="0" stop-color="#ff4d4d"/><stop offset=".25" stop-color="#ffd23f"/><stop offset=".5" stop-color="#3ddc84"/><stop offset=".75" stop-color="#3d8bff"/><stop offset="1" stop-color="#b65cff"/></linearGradient></defs>
+  <rect x="${x-17}" y="${y-110}" width="74" height="88" rx="5" fill="#1d1f24" stroke="#000"/>
+  <circle cx="${x+20}" cy="${y-72}" r="18" fill="url(#rainbow)" stroke="#f2eef7" stroke-width="2"/>`;
+  pins.forEach(([n,col],i)=>{const px=x+i*P;
+    s+=`<rect x="${px-1.5}" y="${y-22}" width="3" height="22" fill="#d8b45a"/><text x="${px}" y="${y-30}" text-anchor="middle" font-size="10" font-family="${MONO}" font-weight="700" fill="${col}">${n}</text>`});
+  return s+`</g><text x="${x+20}" y="${y-118}" text-anchor="middle" class="lbl-b">KY-034</text>`;
+}
+
+function build(v){
+  const ky=v==='ky034', lc=ky?15:12;
+  let s=`<svg viewBox="0 0 960 510" role="img" aria-label="${ky?'ESP32, TTP223B і модуль KY-034 на макетній платі':'ESP32, TTP223B і RGB-світлодіод з резистором на макетній платі'}">`;
+  s+=boardSvg([[5,C.gnd,'gnd'],[6,C.sig,'sig'],[7,C.vcc,'vcc'],[lc,C.led,'led'],...(ky?[]:[[16,C.mid,'mid']]),[17,C.gnd,'gnd']]);
   s+=espSvg()+moduleSvg(colX(5),R.a);
   // TTP223B, як в уроці 1
   MOD.forEach(([k],i)=>{const h={x:colX(5+i),y:R.c}, a=esp[k];
     s+=wire(k,k,`M${a.x} ${a.y} C${a.x+170+i*30} ${a.y} ${h.x} ${h.y+150+i*20} ${h.x} ${h.y}`,female(a)+male(h,k))});
   // перемичка мінус LED → стовпець 5 (GND)
   const j1={x:colX(17),y:R.e}, j2={x:colX(5),y:R.e};
-  s+=wire('gnd','jmp',`M${j1.x} ${j1.y} C${j1.x} ${j1.y+50} ${j2.x} ${j2.y+50} ${j2.x} ${j2.y}`,male(j1,'gnd')+male(j2,'gnd'));
-  // D19 → стовпець 12
-  const a=esp.led, h={x:colX(12),y:R.c};
-  s+=wire('led','led',`M${a.x} ${a.y} C${a.x+230} ${a.y} ${h.x} ${h.y+150} ${h.x} ${h.y}`,female(a)+male(h,'led'));
-  s+=resistor(12,16,R.a)+led(16,R.d);
-  s+=note(colX(21),R.a,'резистор 220 Ом: 12a – 16a')+note(colX(21),R.c,'RGB: R у 16d, спільна у 17d')+note(colX(21),R.d,'G у 18d, B у 19d — поки вільні')+note(colX(21),R.e+14,'перемичка 17e → 5e (GND)');
+  s+=wire('gnd',ky?'jmp2':'jmp',`M${j1.x} ${j1.y} C${j1.x} ${j1.y+50} ${j2.x} ${j2.y+50} ${j2.x} ${j2.y}`,male(j1,'gnd')+male(j2,'gnd'));
+  // D19 → стовпець 12 (RGB) або 15 (пін S модуля)
+  const a=esp.led, h={x:colX(lc),y:R.c};
+  s+=wire('led',ky?'led2':'led',`M${a.x} ${a.y} C${a.x+230} ${a.y} ${h.x} ${h.y+150} ${h.x} ${h.y}`,female(a)+male(h,'led'));
+  if(ky) s+=kySvg(colX(15),R.a)+note(colX(19),R.a,'S у a15, − у a17, середній вільний')+note(colX(19),R.c,'15c → D19, без резистора')+note(colX(19),R.e+14,'перемичка 17e → 5e (GND)');
+  else s+=resistor(12,16,R.a)+led(16,R.d)+note(colX(21),R.a,'резистор 220 Ом: 12a – 16a')+note(colX(21),R.c,'RGB: R у 16d, спільна у 17d')+note(colX(21),R.d,'G у 18d, B у 19d — поки вільні')+note(colX(21),R.e+14,'перемичка 17e → 5e (GND)');
   return s+`</svg>`;
 }
 // --- page ---
-const ROWS=[
-  ['gnd','TTP223B GND','5a → 5c','GND','синій'],
-  ['sig','TTP223B I/O','6a → 6c','D4','жовтий'],
-  ['vcc','TTP223B VCC','7a → 7c','3V3','червоний'],
-  ['led','Сигнал LED','12c','D19','зелений'],
-  ['mid','Резистор → R','16a ↔ 16d','—','без дроту'],
-  ['gnd','Спільна → земля','17d → 17e → 5e','через стовпець 5','синя перемичка']
-];
-const STEPS=['Від’єднайте USB від ESP32.','TTP223B лишається, як в уроці 1: a5–a7, дроти з 5c, 6c, 7c.','Резистор 220 Ом: одна ніжка в <span class="m">12a</span>, друга в <span class="m">16a</span>.','RGB-світлодіод у ряд d: червона ніжка в <span class="m">16d</span>, найдовша (спільна) у <span class="m">17d</span>, зелена в <span class="m">18d</span>, синя в <span class="m">19d</span>.','Перемичка «тато-тато»: <span class="m">17e</span> → <span class="m">5e</span>.','Дріт «тато-мама»: <span class="m">12c</span> → <span class="m">D19</span> на ESP32.','Вставте USB і прошийте <span class="m">projects/esp32-morse</span>.','Торкніться сенсора: червоний спалахує, крапка коротко, тире довго. Не світить — дивіться «спільний анод» нижче.'];
+const M=t=>`<span class="m">${t}</span>`;
+const BASE=[['gnd','TTP223B GND','5a → 5c','GND','синій'],['sig','TTP223B I/O','6a → 6c','D4','жовтий'],['vcc','TTP223B VCC','7a → 7c','3V3','червоний']];
+const V={
+  rgb:{
+    sub:'Схема з уроку 1 плюс RGB-світлодіод на D19, поки світить тільки червоний колір. Він світить, поки палець на сенсорі: крапка — короткий спалах, тире — довгий. Наведіть мишку на деталь чи дріт, щоб прочитати, навіщо він.',
+    rows:[...BASE,['led','Сигнал LED','12c','D19','зелений'],['mid','Резистор → R','16a ↔ 16d','—','без дроту'],['gnd','Спільна → земля','17d → 17e → 5e','через стовпець 5','синя перемичка']],
+    steps:['Від’єднайте USB від ESP32.','TTP223B лишається, як в уроці 1: a5–a7, дроти з 5c, 6c, 7c.',`Резистор 220 Ом: одна ніжка в ${M('12a')}, друга в ${M('16a')}.`,`RGB-світлодіод у ряд d: червона ніжка в ${M('16d')}, найдовша (спільна) у ${M('17d')}, зелена в ${M('18d')}, синя в ${M('19d')}.`,`Перемичка «тато-тато»: ${M('17e')} → ${M('5e')}.`,`Дріт «тато-мама»: ${M('12c')} → ${M('D19')} на ESP32.`,`Вставте USB і прошийте ${M('projects/esp32-morse')}.`,'Торкніться сенсора: червоний спалахує, крапка коротко, тире довго. Не світить — дивіться «спільний анод» нижче.'],
+    path:['D19 (3.3 В)','дріт','стовпець 12','резистор 220 Ом','стовпець 16','LED: R → спільна','стовпець 17','перемичка','стовпець 5','GND'],
+    checks:['Ніжки резистора в <b>різних</b> стовпцях (12 і 16). Якщо обидві в одному стовпці, резистор нічого не обмежує, і світлодіод може згоріти разом з піном.','Найдовша ніжка RGB (спільна) — у стовпці 17. Червона (одна ніжка з того боку від найдовшої) — у стовпці 16, разом з резистором.','Якщо не світить нічого, у вас, мабуть, спільний анод. Переставте перемичку з <code>17e</code> на <code>7e</code> (3V3): червоний світитиме постійно й гаснутиме при дотику. Тоді логіку в коді треба перевернути. Від 3.3 В навиворіт світлодіоду нічого не буде.']},
+  ky034:{
+    sub:'Схема з уроку 1 плюс модуль KY-034 на D19. Поки палець на сенсорі, модуль світить і сам переливається сімома кольорами. Код той самий, що й для RGB. Наведіть мишку на деталь чи дріт, щоб прочитати, навіщо він.',
+    rows:[...BASE,['led','S модуля','a15 → 15c','D19','зелений'],['gnd','− модуля → земля','a17 → 17e → 5e','через стовпець 5','синя перемичка'],['mid','Середній пін','a16','—','нікуди']],
+    steps:['Від’єднайте USB від ESP32.','TTP223B лишається, як в уроці 1: a5–a7, дроти з 5c, 6c, 7c.','Якщо стояв RGB-варіант, вийміть RGB-світлодіод і резистор.',`KY-034 у ряд a: ${M('S')} у ${M('a15')}, середній у ${M('a16')}, ${M('−')} у ${M('a17')}.`,`Перемичка «тато-тато»: ${M('17e')} → ${M('5e')}.`,`Дріт «тато-мама»: ${M('15c')} → ${M('D19')} на ESP32. Резистор не потрібен.`,`Вставте USB і прошийте ${M('projects/esp32-morse')}.`,'Торкніться сенсора: модуль світить і переливається, поки тримаєте палець.'],
+    path:['D19 (3.3 В)','дріт','стовпець 15','KY-034: S → −','стовпець 17','перемичка','стовпець 5','GND'],
+    checks:['<code>S</code> у стовпці 15 (там зелений дріт), <code>−</code> у стовпці 17 (там перемичка на GND). Середній пін ні до чого не під’єднуйте.','Резистор не ставте: мікросхема в світлодіоді сама обмежує струм (до ~20 мА, для піна ESP32 це допустимо), а з резистором при 3.3 В їй не вистачить напруги.','Кожен дотик заново вмикає мікросхему, тому вона, найімовірніше, щоразу починає з того самого кольору. Короткі крапки будуть однакові, а на довгому тире видно, як колір змінюється.','Не світить зовсім? Перевірте, чи не переплутані S і −. Якщо все правильно, а світла немає, модулю замало 3.3 В: тоді знадобиться транзистор і 5 В.']}
+};
 const fig=document.getElementById('fig'), rows=document.getElementById('rows'), tip=document.getElementById('tip');
-fig.innerHTML=build();
-rows.innerHTML=ROWS.map(([k,w,bb,e,col],i)=>`<tr tabindex="0" data-k="${k}" data-i="${i}"><td>${w}</td><td class="m">${bb}</td><td class="m"><b>${e}</b></td><td><span class="chip" style="background:${C[k]}"></span>${col}</td></tr>`).join('');
-document.getElementById('steps').innerHTML=STEPS.map(t=>`<li>${t}</li>`).join('');
 let pinned=null;
+function show(v){
+  v=V[v]?v:'rgb'; const d=V[v]; pinned=null; tip.hidden=true;
+  fig.innerHTML=build(v); fig.querySelectorAll('title').forEach(t=>t.remove());
+  document.getElementById('sub').textContent=d.sub;
+  rows.innerHTML=d.rows.map(([k,w,bb,e,col],i)=>`<tr tabindex="0" data-k="${k}" data-i="${i}"><td>${w}</td><td class="m">${bb}</td><td class="m"><b>${e}</b></td><td><span class="chip" style="background:${C[k]}"></span>${col}</td></tr>`).join('');
+  document.getElementById('steps').innerHTML=d.steps.map(t=>`<li>${t}</li>`).join('');
+  document.getElementById('path').innerHTML=d.path.map(t=>`<span>${t}</span>`).join(' → ');
+  document.getElementById('checks').innerHTML=d.checks.map(t=>`<li>${t}</li>`).join('');
+  document.querySelectorAll('#variants button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===v));
+}
+document.getElementById('variants').onclick=e=>{const b=e.target.closest('button');if(b){location.hash=b.dataset.v;show(b.dataset.v)}};
+addEventListener('hashchange',()=>show(location.hash.slice(1)));
 function focusOn(k,i){fig.querySelectorAll('[data-w]').forEach(e=>e.style.opacity=k&&e.dataset.w!==k?.12:'');[...rows.children].forEach(tr=>tr.classList.toggle('on',tr.dataset.i===i))}
 rows.addEventListener('mouseover',e=>{const tr=e.target.closest('tr');if(tr&&!pinned)focusOn(tr.dataset.k,tr.dataset.i)});
 rows.addEventListener('mouseleave',()=>{if(!pinned)focusOn(null)});
 rows.addEventListener('click',e=>{const tr=e.target.closest('tr');if(!tr)return;pinned=pinned===tr.dataset.i?null:tr.dataset.i;pinned?focusOn(tr.dataset.k,tr.dataset.i):focusOn(null)});
 rows.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.target.click()}});
 // підказка при наведенні
-fig.querySelectorAll('title').forEach(t=>t.remove());
 fig.addEventListener('pointermove',e=>{
   const g=e.target.closest('[data-tip]');
   if(!g||e.pointerType==='touch'){tip.hidden=true;return}
@@ -236,4 +269,5 @@ fig.addEventListener('pointermove',e=>{
   tip.style.top=(e.clientY+16+r.height>innerHeight?e.clientY-r.height-12:e.clientY+16)+'px';
 });
 fig.addEventListener('pointerleave',()=>tip.hidden=true);
+show(location.hash.slice(1));
 </script>
