@@ -105,6 +105,7 @@ ol li::marker{font-family:var(--mono);color:var(--accent);font-weight:600}
   <section class="warn">
     <h2>Перевірте перед тим, як вставити USB</h2>
     <ul>
+      <li><b>Дроти від датчика — у тому ж порядку:</b> Vcc → a10, Trig → a11, Echo → a12, Gnd → a13. Якщо переплутати Vcc і Gnd, датчик може згоріти.</li>
       <li><b>Echo ніколи напряму на ESP32.</b> Зелений дріт до D19 стоїть у стовпці <b>16</b>, а не 12. На стовпці 12 — 5 В, вони спалять пін.</li>
       <li>Червоний дріт іде на <code>VIN</code> (лівий бік ESP32, унизу), не на <code>3V3</code>. HC-SR04 потрібно 5 В.</li>
       <li>Усі три резистори однакові, і в кожного ніжки в різних стовпцях. Якщо резистори різні, порахуйте за формулою вище: на D19 має вийти 3–3.3 В.</li>
@@ -124,7 +125,11 @@ const pinY=i=>110+i*22, RX=168, LX=42, MONO='IBM Plex Mono,Consolas,monospace';
 const esp={v5:{x:LX,y:pinY(14)},trig:{x:RX,y:pinY(6)},safe:{x:RX,y:pinY(5)},led:{x:RX,y:pinY(4)},gnd:{x:RX,y:pinY(13)}};
 const T={
   esp:'ESP32 DevKit. D18 подає команду «виміряй» (Trig), D19 слухає відлуння (Echo через дільник), D21 вмикає KY-034, VIN дає 5 В для HC-SR04.',
-  hc:'HC-SR04 — ультразвуковий далекомір. T (передавач) «кричить» ультразвуком 40 кГц, R (приймач) ловить відлуння. Echo тримає HIGH рівно стільки, скільки летів звук туди й назад. Живлення 5 В. Насправді модуль стоїть вертикально, «очима» вперед.',
+  hc:'HC-SR04 — ультразвуковий далекомір. T (передавач) «кричить» ультразвуком 40 кГц, R (приймач) ловить відлуння. Echo тримає HIGH рівно стільки, скільки летів звук туди й назад. Живлення 5 В. Лежить окремо від макетки на 4 дротах «мама-тато», тож його можна покласти на край столу «очима» вперед.',
+  hv5:'Червоний дріт «мама-тато»: Vcc датчика → a10. Стовпець 10 далі йде на VIN.',
+  htrig:'Жовтий дріт «мама-тато»: Trig датчика → a11. Стовпець 11 далі йде на D18.',
+  hecho:'Помаранчевий дріт «мама-тато»: Echo датчика → a12. Тут 5 В, тому далі сигнал іде через дільник R1–R2–R3.',
+  hgnd:'Синій дріт «мама-тато»: Gnd датчика → a13. Стовпець 13 — земля всієї схеми.',
   v5:'Червоний дріт: VIN → Vcc (стовпець 10). Коли плата живиться від USB, на VIN ≈ 4.7–5 В. HC-SR04 потрібно саме 5 В, від 3.3 В він працює погано.',
   trig:'Жовтий дріт: D18 → Trig (стовпець 11). ESP32 подає імпульс 10 мкс — команду «виміряй». 3.3 В модулю для цього досить.',
   echo:'Стовпець 12: Echo модуля. Тут 5 В, тому напряму на ESP32 не можна, сигнал іде через дільник R1–R2–R3.',
@@ -176,6 +181,8 @@ function kySvg(x,y){ // KY-034, x,y — кінчик піна S
 }
 const male=(p,k)=>`<rect x="${p.x-5}" y="${p.y+4}" width="10" height="12" rx="2" fill="#1a1a1a"/><circle cx="${p.x}" cy="${p.y}" r="4" fill="${C[k]}" stroke="#000" stroke-opacity=".5"/>`;
 const plug=(p,k)=>`<circle cx="${p.x}" cy="${p.y}" r="4.5" fill="${C[k]}" stroke="#000" stroke-opacity=".6"/>`;
+const femaleV=p=>`<rect x="${p.x-5}" y="${p.y-14}" width="10" height="22" rx="2" fill="#1a1a1a"/>`;
+const maleUp=(p,k)=>`<rect x="${p.x-5}" y="${p.y-16}" width="10" height="12" rx="2" fill="#1a1a1a"/><circle cx="${p.x}" cy="${p.y}" r="4" fill="${C[k]}" stroke="#000" stroke-opacity=".5"/>`;
 const female=(p,left)=>`<rect x="${left?p.x-17:p.x-5}" y="${p.y-5}" width="22" height="10" rx="2" fill="#1a1a1a"/>`;
 function wire(k,tip,d,ends,w){
   return `<g data-w="${k}" ${tipA(tip)}<path d="${d}" fill="none" stroke="#000" stroke-opacity=".3" stroke-width="${(w||5.5)+2.5}" stroke-linecap="round"/>
@@ -209,10 +216,15 @@ function resistor(c1,c2,y,tip,name){
 }
 const note=(x,y,t,anchor)=>`<text x="${x}" y="${y+4}" ${anchor?`text-anchor="${anchor}"`:''} font-family="IBM Plex Sans,Segoe UI,Arial,sans-serif" font-size="12" font-weight="600" fill="#2b2820" stroke="#f3f1ea" stroke-width="5" paint-order="stroke">${t}</text>`;
 
+const HC={x:380,y:-8}; // кінчик піна Vcc датчика, що лежить окремо на дротах
 function build(){
-  let s=`<svg viewBox="0 0 960 560" role="img" aria-label="ESP32, ультразвуковий датчик HC-SR04, дільник напруги з трьох резисторів і модуль KY-034 на макетній платі">`;
+  let s=`<svg viewBox="0 -185 960 745" role="img" aria-label="ESP32, ультразвуковий датчик HC-SR04 на дротах мама-тато, дільник напруги з трьох резисторів і модуль KY-034 на макетній платі">`;
   s+=boardSvg([[10,'v5'],[11,'trig'],[12,'echo'],[13,'gnd'],[16,'safe'],[20,'div'],[22,'led'],[24,'gnd']]);
-  s+=espSvg()+hcSvg(colX(10),R.a)+kySvg(colX(22),R.a);
+  s+=espSvg()+kySvg(colX(22),R.a)+hcSvg(HC.x,HC.y);
+  // 4 дроти «мама-тато»: піни датчика → a10..a13
+  ['v5','trig','echo','gnd'].forEach((k,i)=>{const p={x:HC.x+i*P,y:HC.y}, h={x:colX(10+i),y:R.a};
+    s+=wire(k,'h'+k,`M${p.x} ${p.y+8} C${p.x} ${p.y+120} ${h.x} ${h.y-130} ${h.x} ${h.y-16}`,femaleV(p)+maleUp(h,k),4.5);});
+  s+=`<text x="${HC.x+190}" y="${HC.y+40}" class="lbl">датчик окремо, на 4 дротах «мама-тато»</text>`;
   s+=resistor(12,16,R.b,'r1','R1')+resistor(16,20,R.c,'r2','R2')+resistor(20,24,R.b,'r3','R3');
   // перемичка: стовпець 24 (R3 і мінус KY-034) → стовпець 13 (GND)
   const j1={x:colX(24),y:R.d}, j2={x:colX(13),y:R.d};
@@ -232,18 +244,18 @@ function build(){
 // --- page ---
 const M=t=>`<span class="m">${t}</span>`;
 const ROWS=[
-  ['v5','HC-SR04 Vcc','a10 → 10e','VIN (5 В)','червоний'],
-  ['trig','HC-SR04 Trig','a11 → 11e','D18','жовтий'],
-  ['echo','HC-SR04 Echo','a12 → R1','—','без дроту'],
+  ['v5','HC-SR04 Vcc','дріт → a10 · 10e','VIN (5 В)','червоні'],
+  ['trig','HC-SR04 Trig','дріт → a11 · 11e','D18','жовті'],
+  ['echo','HC-SR04 Echo','дріт → a12 → R1','—','помаранчевий'],
   ['div','Дільник R1–R2–R3','12b–16b, 16c–20c, 20b–24b','—','резистори'],
   ['safe','Середина дільника','16e','D19','зелений'],
-  ['gnd','HC-SR04 Gnd','a13 → 13e','GND','синій'],
+  ['gnd','HC-SR04 Gnd','дріт → a13 · 13e','GND','сині'],
   ['led','KY-034 S','a22 → 22e','D21','рожевий'],
   ['gnd','KY-034 − і R3','24d → 13d','через стовпець 13','синя перемичка']
 ];
 const STEPS=[
   'Від’єднайте USB від ESP32.',
-  `HC-SR04 у ряд a, «очима» від себе: ${M('Vcc')} у ${M('a10')}, ${M('Trig')} у ${M('a11')}, ${M('Echo')} у ${M('a12')}, ${M('Gnd')} у ${M('a13')}.`,
+  `HC-SR04 на 4 дротах «мама-тато»: «мама» на піни датчика, «тато» в макетку — ${M('Vcc')} → ${M('a10')}, ${M('Trig')} → ${M('a11')}, ${M('Echo')} → ${M('a12')}, ${M('Gnd')} → ${M('a13')}. Сам датчик покладіть, де зручно, «очима» вперед.`,
   `Три однакові резистори: R1 ${M('12b–16b')}, R2 ${M('16c–20c')}, R3 ${M('20b–24b')}.`,
   `KY-034 у ряд a: ${M('S')} у ${M('a22')}, середній у ${M('a23')}, ${M('−')} у ${M('a24')}.`,
   `Перемичка «тато-тато»: ${M('24d')} → ${M('13d')}.`,
