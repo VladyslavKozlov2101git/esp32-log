@@ -24,7 +24,14 @@ static const unsigned long STEP_MS = 70;  // поворот + заспокоєн
 // ---------- Далекомір ----------
 static const float US_PER_CM = 58.0f;              // калібрування за лінійкою, як у парктроніку
 static const unsigned long ECHO_TIMEOUT_US = 25000;  // ~4 м
-static const float ALERT_CM = 30.0f;               // ближче — KY-034 світить
+static const float ALERT_CM = 30.0f;               // звичайний режим: ближче — KY-034 світить
+
+// ---------- Охорона ----------
+static const int LEARN_PASSES = 2;                 // скільки повних проходів запам'ятовувати «порожню кімнату»
+static const int TOL_CM = 15;                      // на скільки ближче за норму — вже «щось нове»
+static const int GUARD_MAX_CM = 250;               // де в нормі було порожньо, реагувати лише ближче цього
+static const int CONFIRM_STEPS = 3;                // тривога, коли «нове» на стількох кутах підряд (відсіює стрибки датчика)
+static const unsigned long ALARM_HOLD_MS = 3000;   // скільки світить KY-034 після тривоги
 
 // ---------- Стан ----------
 static const int N = (SWEEP_MAX - SWEEP_MIN) / STEP_DEG + 1;  // точок за один прохід
@@ -34,6 +41,16 @@ static int dir = 1;         // 1 = вліво (кут росте), -1 = впра
 static float lastCm = -1;
 static unsigned long lastStep = 0;
 static uint32_t sweeps = 0;
+
+enum GuardState { G_OFF, G_LEARN, G_ARMED };
+static GuardState guard = G_OFF;
+static int learnLeft = 0;            // скільки ще проходів учитися
+static int baseCm[N];                // «норма» для кожного кута, -1 = порожньо
+static bool changed[N];              // на цьому куті зараз ближче за норму
+static int streak = 0;               // скільки кутів підряд «щось нове»
+static unsigned long alarmUntil = 0;
+static int alarmAngle = -1;
+static uint32_t alarms = 0;
 
 WebServer server(80);
 
@@ -62,6 +79,13 @@ static const char PAGE[] PROGMEM = R"rawliteral(
   select { background:#0b2417; border:1px solid var(--line); border-radius:8px; padding:4px 8px; }
   .dot { width:9px; height:9px; border-radius:50%; background:#f59e0b; display:inline-block; margin-right:6px; }
   .dot.online { background:var(--green); box-shadow:0 0 10px var(--green); }
+  .banner { margin-top:10px; padding:10px 12px; border-radius:10px; font-size:14px; font-weight:700; display:none; }
+  .banner.learn { display:block; background:#2a2208; color:var(--amber); border:1px solid #5a4710; }
+  .banner.calm { display:block; background:#0b2417; color:var(--green); border:1px solid var(--line); }
+  .banner.alarm { display:block; background:#3a0c0c; color:#ffd0d0; border:1px solid var(--red); animation:flash .6s steps(1) infinite; }
+  @keyframes flash { 50% { background:#5c1111; } }
+  button { background:#0b2417; color:#d8ffe9; border:1px solid var(--line); border-radius:8px; padding:6px 12px; font:inherit; cursor:pointer; }
+  button.on { border-color:var(--amber); color:var(--amber); }
 </style>
 </head>
 <body>
@@ -69,12 +93,14 @@ static const char PAGE[] PROGMEM = R"rawliteral(
   <div class="card">
     <h1>Радар · HC-SR04 + SG90</h1>
     <canvas id="c"></canvas>
+    <div class="banner" id="banner"></div>
     <div class="read">
       <span class="big" id="dist">—</span>
       <span class="muted" id="ang">кут —</span>
       <span class="muted" id="near">найближче: —</span>
     </div>
     <div class="ctl">
+      <button id="guard">Увімкнути охорону</button>
       <label>Дальність <select id="range"><option>100</option><option selected>200</option><option>300</option></select> см</label>
       <label><input type="checkbox" id="mirror"> дзеркально</label>
       <span><span class="dot" id="dot"></span><span id="status">з'єднання…</span></span>
@@ -86,6 +112,11 @@ const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const rangeEl = document.getElementById('range'), mirrorEl = document.getElementById('mirror');
 const distEl = document.getElementById('dist'), angEl = document.getElementById('ang'), nearEl = document.getElementById('near');
 const dot = document.getElementById('dot'), statusEl = document.getElementById('status');
+const banner = document.getElementById('banner'), guardBtn = document.getElementById('guard');
+guardBtn.onclick = async () => {
+  try { await fetch('/api/guard?on=' + (st && st.g ? 0 : 1), { cache:'no-store' }); } catch (e) {}
+  poll();
+};
 try { mirrorEl.checked = localStorage.getItem('mirror') === '1'; rangeEl.value = localStorage.getItem('range') || '200'; } catch (e) {}
 mirrorEl.onchange = () => { try { localStorage.setItem('mirror', mirrorEl.checked ? '1' : '0'); } catch (e) {} draw(); };
 rangeEl.onchange = () => { try { localStorage.setItem('range', rangeEl.value); } catch (e) {} draw(); };
@@ -133,6 +164,23 @@ function draw() {
     ctx.fillStyle = p.cm < 30 ? '#ff5d5d' : p.cm < 100 ? '#ffc845' : '#3dff8f';
     ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 2 * Math.PI); ctx.fill();
   }
+  if (st.g) {   // охорона: «норма» кімнати — пунктир, нове — червоні кільця
+    ctx.strokeStyle = 'rgba(200,220,210,.4)'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]); ctx.beginPath();
+    let on = false;
+    st.b.forEach((cm, i) => {
+      if (cm < 0 || cm > range) { on = false; return; }
+      const [x, y] = xy(cx, cy, R * cm / range, st.min + i * st.step);
+      if (on) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      on = true;
+    });
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = '#ff5d5d'; ctx.lineWidth = 2;
+    st.d.forEach((cm, i) => {
+      if (st.c[i] !== '1' || cm < 0 || cm > range) return;
+      const [x, y] = xy(cx, cy, R * cm / range, st.min + i * st.step);
+      ctx.beginPath(); ctx.arc(x, y, 8, 0, 2 * Math.PI); ctx.stroke();
+    });
+  }
   // промінь
   const [bx, by] = xy(cx, cy, R, st.a);
   const g = ctx.createLinearGradient(cx, cy, bx, by);
@@ -148,6 +196,12 @@ async function poll() {
     let best = null;
     st.d.forEach((cm, i) => { if (cm >= 0 && (!best || cm < best.cm)) best = { cm, deg: st.min + i * st.step }; });
     nearEl.textContent = best ? 'найближче: ' + best.cm + ' см на ' + best.deg + '°' : 'найближче: —';
+    guardBtn.textContent = st.g ? 'Вимкнути охорону' : 'Увімкнути охорону';
+    guardBtn.className = st.g ? 'on' : '';
+    if (!st.g) banner.className = 'banner';
+    else if (st.g === 1) { banner.className = 'banner learn'; banner.textContent = 'Запам\'ятовую кімнату… відійдіть від радара на кілька секунд'; }
+    else if (st.al) { banner.className = 'banner alarm'; banner.textContent = 'ТРИВОГА: щось нове на ' + st.aa + '° (усього тривог: ' + st.n + ')'; }
+    else { banner.className = 'banner calm'; banner.textContent = 'На варті: усе як було' + (st.n ? ' · тривог: ' + st.n : ''); }
     fails = 0; dot.className = 'dot online'; statusEl.textContent = 'на зв\'язку';
   } catch (e) {
     if (++fails > 2) { dot.className = 'dot'; statusEl.textContent = "немає зв'язку"; }
@@ -171,6 +225,34 @@ void servoWrite(int deg) {
 
 int angleAt(int i) { return SWEEP_MIN + i * STEP_DEG; }
 
+// ---------- Охорона ----------
+void startLearning() {
+  for (int i = 0; i < N; i++) {
+    baseCm[i] = -1;
+    changed[i] = false;
+  }
+  learnLeft = LEARN_PASSES + 1;  // +1: перший прохід почнеться з середини
+  guard = G_LEARN;
+  streak = 0;
+  alarmUntil = 0;
+  alarmAngle = -1;
+  Serial.println("[guard] learning the room");
+}
+
+void stopGuard() {
+  guard = G_OFF;
+  alarmUntil = 0;
+  for (int i = 0; i < N; i++) changed[i] = false;
+  Serial.println("[guard] off");
+}
+
+// Чи стало на цьому куті щось ближче, ніж у «порожній кімнаті»
+bool isCloser(int cm, int base) {
+  if (cm < 0) return false;                // відлуння немає — нічого нового
+  if (base < 0) return cm < GUARD_MAX_CM;  // було порожньо, а тепер щось є
+  return cm < base - TOL_CM;
+}
+
 // ---------- Далекомір (як у парктроніку) ----------
 float measureCm() {
   digitalWrite(TRIG_PIN, LOW);
@@ -191,7 +273,7 @@ void handleRoot() {
 
 void handleState() {
   String json;
-  json.reserve(40 + N * 5);
+  json.reserve(120 + N * 11);
   json += "{\"a\":";
   json += angleAt(idx);
   json += ",\"cm\":";
@@ -205,9 +287,30 @@ void handleState() {
     if (i) json += ',';
     json += scanCm[i];
   }
-  json += "]}";
+  json += "],\"g\":";
+  json += (int)guard;  // 0 вимкнено, 1 вчиться, 2 на варті
+  json += ",\"al\":";
+  json += millis() < alarmUntil ? "true" : "false";
+  json += ",\"aa\":";
+  json += alarmAngle;
+  json += ",\"n\":";
+  json += alarms;
+  json += ",\"b\":[";
+  for (int i = 0; i < N; i++) {
+    if (i) json += ',';
+    json += baseCm[i];
+  }
+  json += "],\"c\":\"";
+  for (int i = 0; i < N; i++) json += changed[i] ? '1' : '0';
+  json += "\"}";
   server.sendHeader("Cache-Control", "no-store");
   server.send(200, "application/json", json);
+}
+
+void handleGuard() {
+  if (server.arg("on") == "1") startLearning();  // увімкнення завжди заново вчить кімнату
+  else stopGuard();
+  handleState();
 }
 
 void setup() {
@@ -219,7 +322,11 @@ void setup() {
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
   pinMode(LED_PIN, OUTPUT);
-  for (int i = 0; i < N; i++) scanCm[i] = -1;
+  for (int i = 0; i < N; i++) {
+    scanCm[i] = -1;
+    baseCm[i] = -1;
+    changed[i] = false;
+  }
 
   ledcAttach(SERVO_PIN, 50, 16);  // 50 Гц, 16 біт
   servoWrite(angleAt(idx));
@@ -230,6 +337,7 @@ void setup() {
 
   server.on("/", handleRoot);
   server.on("/api/state", handleState);
+  server.on("/api/guard", handleGuard);
   server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
   server.begin();
   Serial.println("HTTP server started on port 80");
@@ -244,13 +352,42 @@ void loop() {
 
   // 1. Серво вже STEP_MS стоїть на куті idx — міряємо
   lastCm = measureCm();
-  scanCm[idx] = lastCm < 0 ? -1 : (int)(lastCm + 0.5f);
-  digitalWrite(LED_PIN, lastCm >= 0 && lastCm < ALERT_CM ? HIGH : LOW);
+  int cm = lastCm < 0 ? -1 : (int)(lastCm + 0.5f);
+  scanCm[idx] = cm;
 
-  // 2. Наступний кут; на краю розвертаємось
+  // 2. Охорона: вчимо «норму» або порівнюємо з нею
+  if (guard == G_LEARN) {
+    if (cm >= 0 && (baseCm[idx] < 0 || cm < baseCm[idx])) baseCm[idx] = cm;  // норма = найближче з проходів
+  } else if (guard == G_ARMED) {
+    changed[idx] = isCloser(cm, baseCm[idx]);
+    streak = changed[idx] ? streak + 1 : 0;
+    // тривога лише коли «нове» на кількох кутах підряд: одиночні стрибки датчика не рахуються
+    if (streak >= CONFIRM_STEPS) {
+      if (now >= alarmUntil) {
+        alarms++;
+        Serial.printf("[guard] ALARM #%lu at %d deg: %d cm (norm %d)\n", (unsigned long)alarms,
+                      angleAt(idx), cm, baseCm[idx]);
+      }
+      alarmUntil = now + ALARM_HOLD_MS;
+      alarmAngle = angleAt(idx);
+    }
+  }
+
+  // 3. KY-034: вчиться — повільно блимає; на варті — світить при тривозі; інакше — ближче ALERT_CM
+  bool led;
+  if (guard == G_LEARN) led = (now / 500) % 2;
+  else if (guard == G_ARMED) led = now < alarmUntil;
+  else led = cm >= 0 && cm < ALERT_CM;
+  digitalWrite(LED_PIN, led ? HIGH : LOW);
+
+  // 4. Наступний кут; на краю розвертаємось
   if (idx + dir < 0 || idx + dir >= N) {
     dir = -dir;
     sweeps++;
+    if (guard == G_LEARN && --learnLeft == 0) {
+      guard = G_ARMED;
+      Serial.println("[guard] armed");
+    }
     int best = -1;
     for (int i = 0; i < N; i++)
       if (scanCm[i] >= 0 && (best < 0 || scanCm[i] < scanCm[best])) best = i;
