@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="uk">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ESP32 radar</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: workbench drawing, then wiring table + steps, then how-it-works cards and checks */
+:root{
+  --bg:#eef1f2; --panel:#ffffff; --bench:#dde5e3; --fg:#1b2327; --muted:#5a676d; --line:#cfd8db;
+  --accent:#0d7a6c; --warn:#b4461a; --warn-bg:#fbeee7;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12171a; --panel:#1a2125; --bench:#1d2829; --fg:#e4eaec; --muted:#9aa8ae; --line:#2d393e;
+  --accent:#4cc0ad; --warn:#f08a5d; --warn-bg:#2c1d16; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171a; --panel:#1a2125; --bench:#1d2829; --fg:#e4eaec; --muted:#9aa8ae; --line:#2d393e;
+  --accent:#4cc0ad; --warn:#f08a5d; --warn-bg:#2c1d16; color-scheme:dark}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font:15px/1.55 var(--sans);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 48px}
+.wrap{max-width:1040px;margin:0 auto;display:grid;gap:22px}
+h1{font-size:clamp(22px,3.4vw,30px);line-height:1.2;margin:0;text-wrap:balance;font-weight:700}
+h2{font-size:17px;margin:0 0 10px;font-weight:600}
+.sub{color:var(--muted);margin:6px 0 0;max-width:70ch}
+code,.m{font-family:var(--mono);font-size:.92em}
+.bench{background:var(--bench);border:1px solid var(--line);border-radius:14px;overflow-x:auto}
+.bench svg{display:block;width:100%;min-width:720px;height:auto}
+.lbl{fill:var(--muted);font:12px var(--sans)}
+.lbl-b{fill:var(--fg);font:600 13px var(--sans)}
+[data-w]{transition:opacity .2s}
+[data-tip]{cursor:help}
+.hint{color:var(--muted);font-size:13px;margin:8px 2px 0}
+.grid2{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:22px}
+@media (max-width:760px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line)}
+th{font-weight:600;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+td{white-space:nowrap}
+tbody tr{cursor:pointer}
+tbody tr:hover,tbody tr:focus-visible,tbody tr.on{background:color-mix(in srgb,var(--accent) 10%,transparent);outline:none}
+.chip{display:inline-block;width:26px;height:6px;border-radius:3px;vertical-align:middle;margin-right:6px}
+ol,ul{margin:0;padding-left:22px;display:grid;gap:8px}
+ol li::marker{font-family:var(--mono);color:var(--accent);font-weight:600}
+.path{font-family:var(--mono);font-size:14px;line-height:2}
+.path span{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:0 10px;margin:2px 0}
+.formula{font-family:var(--mono);font-size:15px;background:color-mix(in srgb,var(--accent) 8%,transparent);border-radius:8px;padding:10px 12px;margin:10px 0 0;overflow-wrap:anywhere}
+.warn{background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);border-radius:12px;padding:16px 18px}
+.warn h2{color:var(--warn)}
+.tip{position:fixed;z-index:20;max-width:320px;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;box-shadow:0 8px 24px rgba(0,0,0,.2);pointer-events:none;font-size:13px;line-height:1.45}
+@media (prefers-reduced-motion:reduce){[data-w]{transition:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Ультразвуковий радар на ESP32</h1>
+    <p class="sub">Парктронік з уроку 3, але датчик тепер сидить на сервоприводі SG90 і повертається від 15° до 165°. На телефоні малюється екран радара з перешкодами, а KY-034 світить, коли щось ближче 30 см. Наведіть мишку на деталь чи дріт, щоб прочитати, навіщо він.</p>
+  </header>
+
+  <figure style="margin:0">
+    <div class="bench" id="fig"></div>
+    <p class="hint">Кольорові смужки — стовпці, з'єднані всередині плати. Усе, крім серво (бірюзовий стовпець 8 і три дроти від роз'єму), лишилося з уроку 3.</p>
+  </figure>
+
+  <div class="grid2">
+    <section class="card">
+      <h2>Що куди</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>Що</th><th>Макетка</th><th>ESP32</th><th>Дріт</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table></div>
+      <p class="hint">Наведіть на рядок, щоб підсвітити його на схемі. Натисніть, щоб закріпити.</p>
+    </section>
+    <section class="card">
+      <h2>Порядок дій</h2>
+      <ol id="steps"></ol>
+    </section>
+  </div>
+
+  <div class="grid2">
+    <section class="card">
+      <h2>Як серво знає, на який кут стати</h2>
+      <p style="margin:0">ESP32 50 разів на секунду (раз на 20 мс) посилає серво короткий імпульс. Кут задає <b>довжина</b> імпульсу:</p>
+      <div class="path"><span>0.5 мс → 0°</span> <span>1.45 мс → 90°</span> <span>2.4 мс → 180°</span></div>
+      <p class="formula">імпульс (мкс) = 500 + 1900 × кут / 180</p>
+      <p class="hint">Усередині серво є мотор, редуктор і потенціометр на валу. Електроніка порівнює імпульс з положенням вала і крутить мотор, доки вони не зрівняються. SG90 трохи різні: якщо серво не доходить до краю або дзижчить на ньому, підправте <code>SERVO_MIN_US</code> і <code>SERVO_MAX_US</code> у коді.</p>
+    </section>
+    <section class="card">
+      <h2>Як малюється радар</h2>
+      <p style="margin:0">Кожні 70 мс ESP32 робить три кроки:</p>
+      <ol style="margin-top:8px">
+        <li>міряє відстань на поточному куті;</li>
+        <li>записує її в таблицю з 51 точки (15°, 18°, … 165°);</li>
+        <li>повертає серво на 3° далі, а на краю розвертається.</li>
+      </ol>
+      <p class="formula">51 точка × 70 мс ≈ 3.6 с на прохід</p>
+      <p class="hint">Телефон кожні 120 мс забирає всю таблицю і малює точки: червоні ближче 30 см, жовті до 1 м, зелені далі. 70 мс узято не випадково: серво встигає стати на місце, а HC-SR04 не любить міряти частіше ніж раз на 60 мс.</p>
+    </section>
+  </div>
+
+  <section class="warn">
+    <h2>Перевірте перед тим, як вставити USB</h2>
+    <ul>
+      <li><b>Роз'єм серво:</b> коричневий — земля, червоний — +5 В, помаранчевий — сигнал. Червоний іде в стовпець 10 (5 В з VIN), а не на <code>3V3</code>.</li>
+      <li><b>Живлення.</b> Якщо ESP32 перезавантажується, щойно серво рушає (у Serial видно <code>Brownout detector was triggered</code>), USB не тягне серво. Дайте серво окреме 5 В, наприклад MP1584 від блока 7–12 В, і з'єднайте його GND із землею схеми.</li>
+      <li><b>Дроти датчика</b> не натягуються на крайніх кутах. Для першого запуску краще зняти датчик з качалки й подивитися, як ходить серво.</li>
+      <li><b>Echo — як в уроці 3:</b> зелений дріт до D19 у стовпці 16, не 12.</li>
+    </ul>
+  </section>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+const C={v5:'#d42a2a',trig:'#e0a800',echo:'#ef6c00',safe:'#1f9d55',gnd:'#1f5fd1',div:'#7b4fd6',led:'#d81b60',srv:'#14b8a6'};
+const P=20, colX=c=>330+(c-1)*P;
+const R={a:215,b:235,c:255,d:275,e:295,f:345,g:365,h:385,i:405,j:425};
+const RIGHT=['D23','D22','TX0','RX0','D21','D19','D18','D5','TX2','RX2','D4','D2','D15','GND','3V3'];
+const LEFT=['EN','VP','VN','D34','D35','D32','D33','D25','D26','D27','D14','D12','D13','GND','VIN'];
+const pinY=i=>110+i*22, RX=168, LX=42, MONO='IBM Plex Mono,Consolas,monospace';
+const esp={v5:{x:LX,y:pinY(14)},trig:{x:RX,y:pinY(6)},safe:{x:RX,y:pinY(5)},led:{x:RX,y:pinY(4)},gnd:{x:LX,y:pinY(13)},srv:{x:RX,y:pinY(0)}};
+const T={
+  esp:'ESP32 DevKit. D23 керує серво, D18 подає команду «виміряй» (Trig), D19 слухає відлуння (Echo через дільник), D21 вмикає KY-034, VIN дає 5 В для датчика й серво.',
+  srv:'SG90 — сервопривід. Повертає датчик від 15° до 165°. HC-SR04 кріпиться на його качалку (двосторонній скотч, гумка або стяжка). У роз\u2019ємі: помаранчевий — сигнал, червоний — +5 В, коричневий — земля.',
+  srvs:'Бірюзовий дріт «тато-тато»: помаранчевий (сигнал) серво → 8c. Далі стовпець 8 веде на D23.',
+  srv5:'Червоний дріт «тато-тато»: червоний (+5 В) серво → 10c. Стовпець 10 — це 5 В з VIN, звідти ж живиться датчик.',
+  srvg:'Синій дріт «тато-тато»: коричневий (земля) серво → 13c. Стовпець 13 — земля всієї схеми.',
+  d23:'Бірюзовий дріт «тато-мама»: 8e → D23. Звідси ESP32 50 разів на секунду посилає серво імпульс 0.5–2.4 мс: довжина імпульсу задає кут.',
+  hc:'HC-SR04 — ультразвуковий далекомір. T (передавач) «кричить» ультразвуком 40 кГц, R (приймач) ловить відлуння. Echo тримає HIGH рівно стільки, скільки летів звук туди й назад. Живлення 5 В. Лежить окремо від макетки на 4 дротах «мама-тато», тож його можна покласти на край столу «очима» вперед.',
+  hv5:'Червоний дріт «мама-тато»: Vcc датчика → a10. Стовпець 10 далі йде на VIN.',
+  htrig:'Жовтий дріт «мама-тато»: Trig датчика → a11. Стовпець 11 далі йде на D18.',
+  hecho:'Помаранчевий дріт «мама-тато»: Echo датчика → a12. Тут 5 В, тому далі сигнал іде через дільник R1–R2–R3.',
+  hgnd:'Синій дріт «мама-тато»: Gnd датчика → a13. Стовпець 13 — земля всієї схеми.',
+  v5:'Червоний дріт: VIN → Vcc (стовпець 10). Коли плата живиться від USB, на VIN ≈ 4.7–5 В. HC-SR04 потрібно саме 5 В, від 3.3 В він працює погано.',
+  trig:'Жовтий дріт: D18 → Trig (стовпець 11). ESP32 подає імпульс 10 мкс — команду «виміряй». 3.3 В модулю для цього досить.',
+  echo:'Стовпець 12: Echo модуля. Тут 5 В, тому напряму на ESP32 не можна, сигнал іде через дільник R1–R2–R3.',
+  gnd:'Синій дріт: GND ESP32 (лівий бік, над VIN) → стовпець 13 (Gnd модуля). Стовпець 13 — «земля» для всієї схеми.',
+  r1:'R1 (12b–16b) — верхній резистор дільника. На ньому «губиться» третина з 5 В.',
+  r2:'R2 (16c–20c). Разом з R3 — нижнє плече дільника, 2 частини з 3.',
+  r3:'R3 (20b–24b). Кінець дільника. Стовпець 24 іде на землю перемичкою.',
+  safe:'Зелений дріт: стовпець 16 (середина дільника) → D19. Тут 5 × 2/3 ≈ 3.3 В, безпечно для піна.',
+  led:'Рожевий дріт: D21 → S модуля KY-034 (стовпець 22). Чим ближче предмет, тим частіше код вмикає й вимикає модуль.',
+  ky:'KY-034. S у a22, середній a23 вільний, − у a24. Мінус ділить стовпець 24 з кінцем R3, тож обидва йдуть на землю однією перемичкою. Резистор не потрібен.',
+  jmp:'Перемичка «тато-тато»: 24d → 13d. Веде на землю і R3, і мінус KY-034.'
+};
+const tipA=k=>`data-tip="${k}"><title>${T[k]}</title>`;
+
+function espSvg(){
+  let s=`<g ${tipA('esp')}<rect x="30" y="40" width="150" height="415" rx="8" fill="#1d2b44" stroke="#0e1626"/>
+  <rect x="62" y="48" width="86" height="54" rx="3" fill="#b9bec4" stroke="#8d939a"/>
+  <text x="105" y="72" text-anchor="middle" font-family="${MONO}" font-size="9" fill="#2a2f35">ESP32-WROOM</text>
+  <text x="105" y="86" text-anchor="middle" font-family="${MONO}" font-size="9" fill="#2a2f35">-32</text>
+  <rect x="88" y="446" width="34" height="18" rx="2" fill="#a7adb3" stroke="#7b8187"/>`;
+  RIGHT.forEach((n,i)=>s+=`<circle cx="${RX}" cy="${pinY(i)}" r="4.5" fill="#d8b45a"/><text x="157" y="${pinY(i)+4}" text-anchor="end" font-family="${MONO}" font-size="10" fill="#e8edf3">${n}</text>`);
+  LEFT.forEach((n,i)=>s+=`<circle cx="${LX}" cy="${pinY(i)}" r="4.5" fill="#d8b45a"/><text x="53" y="${pinY(i)+4}" font-family="${MONO}" font-size="10" fill="#e8edf3">${n}</text>`);
+  s+='</g>';
+  for(const k in esp) s+=`<circle data-w="${k}" cx="${esp[k].x}" cy="${esp[k].y}" r="9" fill="none" stroke="${C[k]}" stroke-width="2.5"/>`;
+  return s+`<text x="105" y="30" text-anchor="middle" class="lbl-b">ESP32 DevKit</text><text x="105" y="480" text-anchor="middle" class="lbl">USB</text>`;
+}
+function hcSvg(x,y){ // HC-SR04, x,y — кінчик піна Vcc
+  const cx=x+30, pins=['Vcc','Trig','Echo','Gnd'];
+  const eye=ex=>`<circle cx="${ex}" cy="${y-87}" r="44" fill="#c9cdd2" stroke="#8d939a" stroke-width="2"/><circle cx="${ex}" cy="${y-87}" r="34" fill="#3a3f45"/>
+    <circle cx="${ex}" cy="${y-87}" r="24" fill="none" stroke="#555b62"/><circle cx="${ex}" cy="${y-87}" r="14" fill="none" stroke="#555b62"/>`;
+  let s=`<g ${tipA('hc')}<rect x="${cx-150}" y="${y-142}" width="300" height="120" rx="6" fill="#1f4e8c" stroke="#123361"/>
+  ${eye(cx-75)}${eye(cx+75)}
+  <rect x="${cx-12}" y="${y-136}" width="24" height="10" rx="5" fill="#d9dde1" stroke="#8d939a"/>
+  <text x="${cx-75}" y="${y-31}" text-anchor="middle" font-family="${MONO}" font-size="10" font-weight="700" fill="#fff">T</text>
+  <text x="${cx+75}" y="${y-31}" text-anchor="middle" font-family="${MONO}" font-size="10" font-weight="700" fill="#fff">R</text>`;
+  pins.forEach((n,i)=>{const px=x+i*P;
+    s+=`<rect x="${px-1.5}" y="${y-22}" width="3" height="22" fill="#d8b45a"/><text x="${px}" y="${y-28}" text-anchor="middle" font-size="7.5" font-family="${MONO}" font-weight="700" fill="#fff">${n}</text>`});
+  return s+`</g><text x="${cx}" y="${y-150}" text-anchor="middle" class="lbl-b">HC-SR04</text>`;
+}
+function kySvg(x,y){ // KY-034, x,y — кінчик піна S
+  const pins=[['S','#ffffff'],['·','#9aa0a6'],['−','#ffffff']];
+  let s=`<g ${tipA('ky')}<defs><linearGradient id="rainbow" x1="0" x2="1" y1="0" y2="1">
+    <stop offset="0" stop-color="#ff4d4d"/><stop offset=".25" stop-color="#ffd23f"/><stop offset=".5" stop-color="#3ddc84"/><stop offset=".75" stop-color="#3d8bff"/><stop offset="1" stop-color="#b65cff"/></linearGradient></defs>
+  <rect x="${x-17}" y="${y-110}" width="74" height="88" rx="5" fill="#1d1f24" stroke="#000"/>
+  <circle cx="${x+20}" cy="${y-72}" r="18" fill="url(#rainbow)" stroke="#f2eef7" stroke-width="2"/>`;
+  pins.forEach(([n,col],i)=>{const px=x+i*P;
+    s+=`<rect x="${px-1.5}" y="${y-22}" width="3" height="22" fill="#d8b45a"/><text x="${px}" y="${y-30}" text-anchor="middle" font-size="10" font-family="${MONO}" font-weight="700" fill="${col}">${n}</text>`});
+  return s+`</g><text x="${x+20}" y="${y-118}" text-anchor="middle" class="lbl-b">KY-034</text>`;
+}
+const male=(p,k)=>`<rect x="${p.x-5}" y="${p.y+4}" width="10" height="12" rx="2" fill="#1a1a1a"/><circle cx="${p.x}" cy="${p.y}" r="4" fill="${C[k]}" stroke="#000" stroke-opacity=".5"/>`;
+const plug=(p,k)=>`<circle cx="${p.x}" cy="${p.y}" r="4.5" fill="${C[k]}" stroke="#000" stroke-opacity=".6"/>`;
+const femaleV=p=>`<rect x="${p.x-5}" y="${p.y-14}" width="10" height="22" rx="2" fill="#1a1a1a"/>`;
+const maleUp=(p,k)=>`<rect x="${p.x-5}" y="${p.y-16}" width="10" height="12" rx="2" fill="#1a1a1a"/><circle cx="${p.x}" cy="${p.y}" r="4" fill="${C[k]}" stroke="#000" stroke-opacity=".5"/>`;
+const female=(p,left)=>`<rect x="${left?p.x-17:p.x-5}" y="${p.y-5}" width="22" height="10" rx="2" fill="#1a1a1a"/>`;
+function wire(k,tip,d,ends,w){
+  return `<g data-w="${k}" ${tipA(tip)}<path d="${d}" fill="none" stroke="#000" stroke-opacity=".3" stroke-width="${(w||5.5)+2.5}" stroke-linecap="round"/>
+  <path d="${d}" fill="none" stroke="${C[k]}" stroke-width="${w||5.5}" stroke-linecap="round"/>${ends}</g>`;
+}
+function boardSvg(groups){
+  let s=`<rect x="300" y="148" width="640" height="345" rx="8" fill="#f3f1ea" stroke="#d6d1c4"/>
+  <rect x="306" y="310" width="628" height="20" fill="#e3ded1"/>`;
+  [[166,'+','#d42a2a'],[184,'−','#1f5fd1'],[453,'−','#1f5fd1'],[471,'+','#d42a2a']].forEach(([y,sym,col])=>{
+    const ly=sym==='+'?(y<300?y-11:y+11):(y<300?y+11:y-11);
+    s+=`<line x1="322" x2="918" y1="${ly}" y2="${ly}" stroke="${col}" stroke-width="2" opacity=".7"/><text x="312" y="${y+4}" font-size="13" font-weight="700" fill="${col}" text-anchor="middle">${sym}</text>`;
+    for(let c=1;c<=30;c++) if(c%6) s+=`<rect x="${colX(c)-3.5}" y="${y-3.5}" width="7" height="7" rx="1.5" fill="#4a4740"/>`;
+  });
+  groups.forEach(([c,k])=>s+=`<rect data-w="${k}" x="${colX(c)-8}" y="205" width="16" height="100" rx="8" fill="${C[k]}" fill-opacity=".18" stroke="${C[k]}" stroke-opacity=".7"/>`);
+  const hot=groups.map(g=>g[0]);
+  for(const r in R){
+    s+=`<text x="316" y="${R[r]+4}" text-anchor="middle" font-size="11" font-family="${MONO}" fill="#8a8578">${r}</text><text x="925" y="${R[r]+4}" text-anchor="middle" font-size="11" font-family="${MONO}" fill="#8a8578">${r}</text>`;
+    for(let c=1;c<=30;c++) s+=`<rect x="${colX(c)-3.5}" y="${R[r]-3.5}" width="7" height="7" rx="1.5" fill="#4a4740"/>`;
+  }
+  for(let c=1;c<=30;c++) if(c===1||c===30||hot.includes(c))
+    s+=`<text x="${colX(c)}" y="324" text-anchor="middle" font-size="${hot.includes(c)?12:10}" font-weight="${hot.includes(c)?700:400}" font-family="${MONO}" fill="${hot.includes(c)?'#2b2820':'#8a8578'}">${c}</text>`;
+  return s;
+}
+function resistor(c1,c2,y,tip,name){
+  const x1=colX(c1), x2=colX(c2), bx=x1+16, bw=x2-x1-32;
+  let s=`<g data-w="div" ${tipA(tip)}<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="#9aa0a6" stroke-width="2.5"/>
+  <circle cx="${x1}" cy="${y}" r="3" fill="#9aa0a6"/><circle cx="${x2}" cy="${y}" r="3" fill="#9aa0a6"/>
+  <rect x="${bx}" y="${y-7}" width="${bw}" height="14" rx="6" fill="#e8d3a8" stroke="#b89a64"/>`;
+  ['#7a4a1e','#1a1a1a','#d42a2a','#c9a227'].forEach((b,i)=>s+=`<rect x="${bx+7+i*(i===3?8:7)}" y="${y-7}" width="4" height="14" fill="${b}"/>`);
+  return s+`<text x="${(x1+x2)/2}" y="${y+20}" text-anchor="middle" font-family="${MONO}" font-size="11" font-weight="700" fill="#5b3fb0" stroke="#f3f1ea" stroke-width="4" paint-order="stroke">${name}</text></g>`;
+}
+const note=(x,y,t,anchor)=>`<text x="${x}" y="${y+4}" ${anchor?`text-anchor="${anchor}"`:''} font-family="IBM Plex Sans,Segoe UI,Arial,sans-serif" font-size="12" font-weight="600" fill="#2b2820" stroke="#f3f1ea" stroke-width="5" paint-order="stroke">${t}</text>`;
+
+const HC={x:380,y:-8}; // кінчик піна Vcc датчика, що лежить окремо на дротах
+function sgSvg(){ // SG90 зверху ліворуч, роз'єм з пінами на x=190/210/230
+  const bx=40, by=-128, sx=bx+30, sy=by+28;
+  let s=`<g ${tipA('srv')}<rect x="${bx-14}" y="${by+20}" width="178" height="16" rx="3" fill="#2f6fc0" opacity=".85"/>
+  <rect x="${bx}" y="${by}" width="150" height="56" rx="6" fill="#2f6fc0" stroke="#1d4f91"/>
+  <circle cx="${sx}" cy="${sy}" r="13" fill="#e9eef3" stroke="#9aa6b2"/>
+  <rect x="${sx-48}" y="${sy-6}" width="96" height="12" rx="6" fill="#f7f9fb" stroke="#9aa6b2" transform="rotate(-25 ${sx} ${sy})"/>
+  <circle cx="${sx}" cy="${sy}" r="4" fill="#9aa6b2"/>
+  <text x="${bx+108}" y="${by+33}" text-anchor="middle" font-family="${MONO}" font-size="12" font-weight="700" fill="#fff">SG90</text>`;
+  ['#f28c28','#d42a2a','#7a4a1e'].forEach((col,i)=>{
+    s+=`<path d="M${bx+136+4*i} ${by+56} C${bx+136+4*i} ${by+110} ${190+20*i} -40 ${190+20*i} 3" fill="none" stroke="${col}" stroke-width="3"/>`;});
+  s+=`<rect x="178" y="3" width="64" height="14" rx="2" fill="#1a1a1a"/></g>`;
+  s+=`<line x1="${sx+20}" y1="${sy-12}" x2="258" y2="-92" stroke="#7d8a90" stroke-width="1.5" stroke-dasharray="5 5"/>
+  <text x="${bx}" y="${by-14}" class="lbl">HC-SR04 кріпиться на качалку серво</text>`;
+  return s;
+}
+
+function build(){
+  let s=`<svg viewBox="-30 -185 990 745" role="img" aria-label="ESP32, ультразвуковий датчик HC-SR04 на сервоприводі SG90, дільник напруги з трьох резисторів і модуль KY-034 на макетній платі">`;
+  s+=boardSvg([[10,'v5'],[11,'trig'],[12,'echo'],[13,'gnd'],[16,'safe'],[20,'div'],[22,'led'],[24,'gnd'],[8,'srv']]);
+  s+=espSvg()+kySvg(colX(22),R.a)+hcSvg(HC.x,HC.y)+sgSvg();
+  // 4 дроти «мама-тато»: піни датчика → a10..a13
+  ['v5','trig','echo','gnd'].forEach((k,i)=>{const p={x:HC.x+i*P,y:HC.y}, h={x:colX(10+i),y:R.a};
+    s+=wire(k,'h'+k,`M${p.x} ${p.y+8} C${p.x} ${p.y+120} ${h.x} ${h.y-130} ${h.x} ${h.y-16}`,femaleV(p)+maleUp(h,k),4.5);});
+  s+=`<text x="${HC.x+190}" y="${HC.y+40}" class="lbl">датчик окремо, на 4 дротах «мама-тато»</text>`;
+  s+=resistor(12,16,R.b,'r1','R1')+resistor(16,20,R.c,'r2','R2')+resistor(20,24,R.b,'r3','R3');
+  // перемичка: стовпець 24 (R3 і мінус KY-034) → стовпець 13 (GND)
+  const j1={x:colX(24),y:R.d}, j2={x:colX(13),y:R.d};
+  s+=wire('gnd','jmp',`M${j1.x} ${j1.y} C${j1.x} ${j1.y+48} ${j2.x} ${j2.y+48} ${j2.x} ${j2.y}`,plug(j1,'gnd')+plug(j2,'gnd'),4.5);
+  // VIN (лівий бік) огинає плату знизу
+  const v=esp.v5, hv={x:colX(10),y:R.e};
+  s+=wire('v5','v5',`M${v.x} ${v.y} C8 ${v.y} 8 505 110 505 C300 505 ${hv.x} 470 ${hv.x} ${hv.y}`,female(v,true)+male(hv,'v5'));
+  // GND (лівий бік, над VIN) огинає плату знизу, поруч з VIN
+  const g=esp.gnd, hg={x:colX(13),y:R.e};
+  s+=wire('gnd','gnd',`M${g.x} ${g.y} C-16 ${g.y} -16 524 110 524 C340 524 ${hg.x} 482 ${hg.x} ${hg.y}`,female(g,true)+male(hg,'gnd'));
+  // правий бік ESP32 → ряд e
+  [['led',22,300],['safe',16,260],['trig',11,210]].forEach(([k,c,dx])=>{
+    const a=esp[k], h={x:colX(c),y:R.e};
+    s+=wire(k,k,`M${a.x} ${a.y} C${a.x+dx} ${a.y} ${h.x} ${h.y+150} ${h.x} ${h.y}`,female(a)+male(h,k));
+  });
+  // роз'єм серво → 8c, 10c, 13c (тато-тато)
+  [['srv','srvs',8],['v5','srv5',10],['gnd','srvg',13]].forEach(([k,tp,c],i)=>{const p={x:190+20*i,y:17}, h={x:colX(c),y:R.c};
+    s+=wire(k,tp,`M${p.x} ${p.y+8} C${p.x} ${p.y+110} ${h.x-70} ${h.y-70} ${h.x} ${h.y-16}`,`<rect x="${p.x-5}" y="${p.y}" width="10" height="10" rx="2" fill="#1a1a1a"/>`+maleUp(h,k),4.5);});
+  // 8e → D23 (тато-мама)
+  {const a=esp.srv, h={x:colX(8),y:R.e};
+    s+=wire('srv','d23',`M${a.x} ${a.y} C${a.x+330} ${a.y} ${h.x} ${h.y+150} ${h.x} ${h.y}`,female(a)+male(h,'srv'));}
+  s+=note(colX(12),R.f+6,'5 В','middle')+note(colX(16)+8,R.f+6,'3.3 В');
+  s+=`<text x="480" y="540" text-anchor="middle" class="lbl">R1, R2, R3 — однакові резистори 1–10 кОм. D19 бере напругу з середини: 5 В × 2/3 ≈ 3.3 В</text>`;
+  return s+`</svg>`;
+}
+// --- page ---
+const M=t=>`<span class="m">${t}</span>`;
+const ROWS=[
+  ['v5','HC-SR04 Vcc','дріт → a10 · 10e','VIN (5 В)','червоні'],
+  ['trig','HC-SR04 Trig','дріт → a11 · 11e','D18','жовті'],
+  ['echo','HC-SR04 Echo','дріт → a12 → R1','—','помаранчевий'],
+  ['div','Дільник R1–R2–R3','12b–16b, 16c–20c, 20b–24b','—','резистори'],
+  ['safe','Середина дільника','16e','D19','зелений'],
+  ['gnd','HC-SR04 Gnd','дріт → a13 · 13e','GND над VIN','сині'],
+  ['led','KY-034 S','a22 → 22e','D21','рожевий'],
+  ['gnd','KY-034 − і R3','24d → 13d','через стовпець 13','синя перемичка'],
+  ['srv','Серво: сигнал (помаранчевий)','8c · 8e','D23','бірюзові'],
+  ['v5','Серво: +5 В (червоний)','10c','через стовпець 10','червоний'],
+  ['gnd','Серво: земля (коричневий)','13c','через стовпець 13','синій']
+];
+const STEPS=[
+  'Від’єднайте USB від ESP32.',
+  'Парктронік з уроку 3 лишається як є: датчик на дротах, дільник, KY-034, 5 дротів до ESP32.',
+  'Прикріпіть HC-SR04 до качалки SG90 (двосторонній скотч, гумка або стяжка), «очима» вперед. Дроти датчика мають вільно повертатися на 150°.',
+  `Три дроти «тато-тато» в роз’єм серво: помаранчевий → ${M('8c')}, червоний → ${M('10c')}, коричневий → ${M('13c')}.`,
+  `Дріт «тато-мама»: ${M('8e')} → ${M('D23')}.`,
+  `Вставте USB, прошийте ${M('projects/esp32-radar')}. Телефон → Wi-Fi ${M('ESP32-Radar')} (пароль ${M('12345678')}) → ${M('192.168.4.1')}.`,
+  'Серво повільно ходить туди-сюди (~3.6 с на прохід), на телефоні малюється радар.',
+  'Перевірте напрямок: поставте руку праворуч від датчика. Якщо точка з’явилася ліворуч, увімкніть «дзеркально» під радаром.'
+];
+const fig=document.getElementById('fig'), rows=document.getElementById('rows'), tip=document.getElementById('tip');
+fig.innerHTML=build(); fig.querySelectorAll('title').forEach(t=>t.remove());
+rows.innerHTML=ROWS.map(([k,w,bb,e,col],i)=>`<tr tabindex="0" data-k="${k}" data-i="${i}"><td>${w}</td><td class="m">${bb}</td><td class="m"><b>${e}</b></td><td><span class="chip" style="background:${C[k]}"></span>${col}</td></tr>`).join('');
+document.getElementById('steps').innerHTML=STEPS.map(t=>`<li>${t}</li>`).join('');
+let pinned=null;
+function focusOn(k,i){fig.querySelectorAll('[data-w]').forEach(e=>e.style.opacity=k&&e.dataset.w!==k?.12:'');[...rows.children].forEach(tr=>tr.classList.toggle('on',tr.dataset.i===i))}
+rows.addEventListener('mouseover',e=>{const tr=e.target.closest('tr');if(tr&&!pinned)focusOn(tr.dataset.k,tr.dataset.i)});
+rows.addEventListener('mouseleave',()=>{if(!pinned)focusOn(null)});
+rows.addEventListener('click',e=>{const tr=e.target.closest('tr');if(!tr)return;pinned=pinned===tr.dataset.i?null:tr.dataset.i;pinned?focusOn(tr.dataset.k,tr.dataset.i):focusOn(null)});
+rows.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.target.click()}});
+// підказка при наведенні
+fig.addEventListener('pointermove',e=>{
+  const g=e.target.closest('[data-tip]');
+  if(!g||e.pointerType==='touch'){tip.hidden=true;return}
+  tip.textContent=T[g.dataset.tip]; tip.hidden=false;
+  const r=tip.getBoundingClientRect();
+  tip.style.left=Math.max(8,Math.min(e.clientX+16,innerWidth-r.width-8))+'px';
+  tip.style.top=(e.clientY+16+r.height>innerHeight?e.clientY-r.height-12:e.clientY+16)+'px';
+});
+fig.addEventListener('pointerleave',()=>tip.hidden=true);
+</script>
