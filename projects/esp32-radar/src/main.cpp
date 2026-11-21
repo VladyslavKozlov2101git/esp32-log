@@ -22,7 +22,8 @@ static const int STEP_DEG = 3;          // крок повороту
 static const unsigned long STEP_MS = 70;  // поворот + заспокоєння + вимір; HC-SR04 хоче >= 60 мс
 
 // ---------- Далекомір ----------
-static const float US_PER_CM = 58.0f;              // калібрування за лінійкою, як у парктроніку
+static const float US_PER_CM = 58.0f;
+static const float MIN_VALID_CM = 3.0f;  // ближче — це «сліпе» проникнення, а не ціль              // калібрування за лінійкою, як у парктроніку
 static const unsigned long ECHO_TIMEOUT_US = 25000;  // ~4 м
 static const float ALERT_CM = 30.0f;               // звичайний режим: ближче — KY-034 світить
 
@@ -262,7 +263,9 @@ float measureCm() {
   digitalWrite(TRIG_PIN, LOW);
   unsigned long us = pulseIn(ECHO_PIN, HIGH, ECHO_TIMEOUT_US);
   if (us == 0) return -1;
-  return us / US_PER_CM;
+  float cm = us / US_PER_CM;
+  if (cm < MIN_VALID_CM) return -1;  // 1–2 см = наведення від власного передавача
+  return cm;
 }
 
 // ---------- HTTP ----------
