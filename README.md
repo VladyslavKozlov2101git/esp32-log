@@ -16,6 +16,8 @@
 | [`projects/esp32-touch-counter`](projects/esp32-touch-counter) | сенсор TTP223B + вебсторінка-лічильник | C++ (Arduino), HTML, CSS, JS |
 | [`projects/esp32-morse`](projects/esp32-morse) | сенсор як телеграфний ключ: крапки/тире → текст на сторінці | C++ (Arduino), HTML, CSS, JS |
 | [`projects/esp32-probe`](projects/esp32-probe) | щуп-вольтметр: читає 6 входів ADC, показує min/max під час імпульсу | C++ (Arduino) |
+| [`projects/esp32-servo-test`](projects/esp32-servo-test) | перевірка серво: розгортка 0–180° без датчиків | C++ (Arduino) |
+| [`projects/esp32-radar`](projects/esp32-radar) | радар: HC-SR04 + серво + KY-034, вебсторінка з розгорткою | C++ (Arduino), HTML, CSS, JS |
 | [`projects/esp32-parktronic`](projects/esp32-parktronic) | HC-SR04 міряє відстань, KY-034 блимає частіше ближче до перешкоди, сантиметри на сторінці | C++ (Arduino), HTML, CSS, JS |
 | [`projects/esp32-radar`](projects/esp32-radar) | HC-SR04 на сервоприводі SG90 оглядає 150°, телефон малює екран радара | C++ (Arduino), HTML, CSS, JS (canvas) |
 
