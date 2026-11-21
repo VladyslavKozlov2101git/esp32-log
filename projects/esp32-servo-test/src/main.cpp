@@ -1,34 +1,30 @@
 #include <Arduino.h>
 
-// Мінімальний тест серво: розгортка 0-180° і назад.
+// Точний тест типу серво: зсув на 20 мкс від центру (1500).
+// Позиційне — зрушить на кілька градусів і зупиниться.
+// Безперервне (або зламаний потенціометр) — крутитиметься без кінця.
 static const int SERVO_PIN = 23;
-static const int MIN_US = 500;
-static const int MAX_US = 2400;
 
-void servoWrite(int deg) {
-  int us = MIN_US + (long)(MAX_US - MIN_US) * deg / 180;
+void pulseUs(int us) {
+  Serial.printf("pulse=%d us\n", us);
   ledcWrite(SERVO_PIN, (uint32_t)us * 65535 / 20000);
-  Serial.printf("deg=%3d  pulse=%4d us\n", deg, us);
 }
 
 void setup() {
   Serial.begin(115200);
   delay(400);
   Serial.println();
-  Serial.println("=== SERVO TEST (GPIO23) ===");
+  Serial.println("=== SERVO TYPE TEST v2 ===");
   ledcAttach(SERVO_PIN, 50, 16);
   delay(300);
 }
 
 void loop() {
-  for (int a = 0; a <= 180; a += 10) {
-    servoWrite(a);
-    delay(300);
-  }
-  Serial.println("--- back ---");
-  for (int a = 180; a >= 0; a -= 10) {
-    servoWrite(a);
-    delay(300);
-  }
-  Serial.println("--- loop ---");
+  Serial.println("-> 1520 us на 8 с (має ледь зрушити й стати)");
+  pulseUs(1520);
+  delay(8000);
+
+  Serial.println("-> 1480 us на 8 с (має ледь зрушити назад і стати)");
+  pulseUs(1480);
+  delay(8000);
 }
