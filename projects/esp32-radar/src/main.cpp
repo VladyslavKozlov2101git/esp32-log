@@ -18,7 +18,7 @@ static const int SERVO_MIN_US = 500;    // імпульс для 0°
 static const int SERVO_MAX_US = 2400;   // імпульс для 180°
 static const int SWEEP_MIN = 30;        // вужчий сектор — менше руху кабелів
 static const int SWEEP_MAX = 150;
-static const int STEP_DEG = 3;          // крок повороту
+static const int STEP_DEG = 15;         // крок повороту (9 позицій на сектор)
 static const unsigned long STEP_MS = 90;  // повільніше й плавніше
 
 // ---------- Далекомір ----------
