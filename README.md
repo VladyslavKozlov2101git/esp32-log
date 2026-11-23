@@ -1,46 +1,39 @@
 # esp32-log
 
-Журнал навчання ESP32: що зроблено, які були проблеми, як їх вирішили.
+**English** · [Українська](README.uk.md)
 
-- [`LOG.md`](LOG.md) — журнал, нові сесії додаються вгору.
-- [`hardware/INVENTORY.md`](hardware/INVENTORY.md) — інвентар обладнання (що є, у якому стані, що з нього можна зробити).
-- [`lessons/`](lessons/) — уроки з рисунками схем: [00 — піни ESP32 і TTP223B](lessons/00-esp32-pins/README.md), [01 — сенсорна кнопка TTP223B](lessons/01-touch-counter/README.md), [02 — Морзе-ключ зі світлодіодом](lessons/02-morse-led/README.md), [03 — парктронік](lessons/03-parktronic/README.md), [04 — ультразвуковий радар](lessons/04-radar/README.md).
-- [`docs/breadboard.md`](docs/breadboard.md) — як користуватись макетною платою і як під'єднати перший модуль.
-- `hardware/photos/` — фото компонентів для ідентифікації.
+A hobby log of learning ESP32 from scratch: small hardware projects, what broke and how I fixed it.
 
-## Проєкти
+Most projects pair a sensor with a web page. The ESP32 starts its own Wi-Fi access point and serves the page, and the page polls the board over HTTP. No cloud and no app, just a phone browser.
 
-| Проєкт | Що робить | Технології |
+**Highlight — ultrasonic radar.** An HC-SR04 sensor on an SG90 servo sweeps 150°, and the phone draws a radar screen on a canvas in real time. Code: [`projects/esp32-radar`](projects/esp32-radar), wiring and notes: [lesson 04](lessons/04-radar/README.md).
+
+## Projects
+
+| Project | What it does | Tech |
 | --- | --- | --- |
-| [`projects/esp32-blink`](projects/esp32-blink) | блимає LED, пише в Serial | C++ (Arduino) |
-| [`projects/esp32-touch-counter`](projects/esp32-touch-counter) | сенсор TTP223B + вебсторінка-лічильник | C++ (Arduino), HTML, CSS, JS |
-| [`projects/esp32-morse`](projects/esp32-morse) | сенсор як телеграфний ключ: крапки/тире → текст на сторінці | C++ (Arduino), HTML, CSS, JS |
-| [`projects/esp32-probe`](projects/esp32-probe) | щуп-вольтметр: читає 6 входів ADC, показує min/max під час імпульсу | C++ (Arduino) |
-| [`projects/esp32-servo-test`](projects/esp32-servo-test) | перевірка серво: розгортка 0–180° без датчиків | C++ (Arduino) |
-| [`projects/esp32-radar`](projects/esp32-radar) | радар: HC-SR04 + серво + KY-034, вебсторінка з розгорткою | C++ (Arduino), HTML, CSS, JS |
-| [`projects/esp32-parktronic`](projects/esp32-parktronic) | HC-SR04 міряє відстань, KY-034 блимає частіше ближче до перешкоди, сантиметри на сторінці | C++ (Arduino), HTML, CSS, JS |
-| [`projects/esp32-radar`](projects/esp32-radar) | HC-SR04 на сервоприводі SG90 оглядає 150°, телефон малює екран радара | C++ (Arduino), HTML, CSS, JS (canvas) |
+| [`esp32-blink`](projects/esp32-blink) | Blinks the LED and logs to Serial (first firmware) | C++ (Arduino) |
+| [`esp32-touch-counter`](projects/esp32-touch-counter) | TTP223B touch sensor + a web page that counts taps | C++, HTML, CSS, JS |
+| [`esp32-morse`](projects/esp32-morse) | Touch sensor as a telegraph key: dots and dashes become text on the page | C++, HTML, CSS, JS |
+| [`esp32-probe`](projects/esp32-probe) | Probe voltmeter: reads 6 ADC inputs and shows min/max during a pulse | C++ |
+| [`esp32-servo-test`](projects/esp32-servo-test) | Servo check: 0–180° sweep without sensors | C++ |
+| [`esp32-parktronic`](projects/esp32-parktronic) | Parking sensor: HC-SR04 measures distance, an LED blinks faster as you get closer, centimetres on the page | C++, HTML, CSS, JS |
+| [`esp32-radar`](projects/esp32-radar) | Ultrasonic radar: HC-SR04 on a servo, radar screen on the phone | C++, HTML, CSS, JS (canvas) |
 
-Кожен проєкт збирається через PlatformIO:
+Hardware: ESP32 DevKit (esp32dev), HC-SR04, SG90, TTP223B, KY-034, breadboard. Full list in [`hardware/INVENTORY.md`](hardware/INVENTORY.md).
+
+## Build
+
+Each project builds with [PlatformIO](https://platformio.org/):
 
 ```bash
-cd projects/esp32-touch-counter
+cd projects/esp32-radar
 pio run -t upload
 pio device monitor
 ```
 
-## Як додати запис
+## Notes and lessons (in Ukrainian)
 
-```bash
-cd ~/Desktop/esp32-log
-# відредагувати LOG.md
-git add .
-git commit -m "Сесія N: короткий опис"
-```
-
-## Пов'язані проєкти
-
-| Проєкт | Шлях |
-| --- | --- |
-| blink (перша прошивка) | `C:\esp32\esp32-blink` |
-| touch-counter (сенсор + вебсторінка) | `C:\esp32\esp32-touch-counter` |
+- [`LOG.md`](LOG.md) — session journal, newest first: what I tried, what failed and why (for example, a servo browning out the board on USB power until it got its own 5 V supply).
+- [`lessons/`](lessons/) — step-by-step lessons with wiring diagrams: [00 — ESP32 pins](lessons/00-esp32-pins/README.md), [01 — touch button](lessons/01-touch-counter/README.md), [02 — Morse key](lessons/02-morse-led/README.md), [03 — parking sensor](lessons/03-parktronic/README.md), [04 — radar](lessons/04-radar/README.md).
+- [`docs/breadboard.md`](docs/breadboard.md) — how a breadboard works and how to connect the first module.
